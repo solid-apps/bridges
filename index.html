@@ -191,25 +191,60 @@ const STATIC_HOSTS = /(?:^|\.)(?:github\.io|pages\.dev|netlify\.app|vercel\.app)
 const servedFromPod = location.protocol.startsWith('http') && !STATIC_HOSTS.test(location.hostname);
 // served from a pod → use that origin; on static hosts (github.io) fall back to a sensible default
 const defaultStorage = (servedFromPod ? location.origin : 'http://localhost:5444') + '/profile/card.jsonld#me';
-const state={ pubkey:null, doc:null, webId:null, pod:null, resolver: mem().resolver || defaultResolver, linkedKey:null, name:'', storage:'', relays:[] };
+const state={ pubkey:null, doc:null, webId:null, pod:null, resolver: mem().resolver || defaultResolver, linkedKey:null, name:'', storage:'', relays:[], candidate:null, verified:false };
 
-/* --- NOSTR → SOLID : resolve storage --- */
+/* --- NOSTR → SOLID : find a candidate WebID, then VERIFY it actually lists this pubkey --- */
 async function resolveStorage(pubkey){
-  state.pubkey=pubkey; state.doc=null; state.webId=null; state.pod=null;
+  state.pubkey=pubkey; state.doc=null; state.webId=null; state.pod=null; state.candidate=null; state.verified=false;
   renderNostr('resolving'); renderBridge(); coach();
   const resolver=state.resolver.replace(/\/+$/,'');
-  let res;
-  try{ res=await fetch(`${resolver}/.well-known/did/nostr/${pubkey}.json`, {headers:{Accept:'application/json'}}); }
-  catch(e){ renderNostr('error', `Couldn't reach ${resolver}: ${e.message}`); coach(); return; }
-  if(res.status===404){ renderNostr('noaccount'); renderBridge(); coach(); return; }
-  if(!res.ok){ renderNostr('error', `Resolver returned ${res.status}`); coach(); return; }
-  let doc; try{ doc=await res.json(); }catch{ renderNostr('error','Resolver returned invalid JSON'); coach(); return; }
+  // 1. canonical did:nostr doc (best-effort)
+  let doc=null;
+  try{ const res=await fetch(`${resolver}/.well-known/did/nostr/${pubkey}.json`,{headers:{Accept:'application/json'}}); if(res.ok) doc=await res.json(); }catch{}
   state.doc=doc;
-  const aka=[].concat(doc.alsoKnownAs||[]).filter(Boolean);
-  if(aka.length){ state.webId=aka[0]; state.pod=podRoot(aka[0]); renderNostr('storage'); }
-  else { renderNostr('nostorage'); }
+  // 2. candidate WebID/storage: alsoKnownAs → the key's kind-0 storage → (own key) the storage field
+  let candidate = doc ? [].concat(doc.alsoKnownAs||[]).filter(Boolean)[0] : null;
+  const fromResolver=!!candidate;
+  if(!candidate){ const p=await queryKind0(pubkey).catch(()=>null); if(p) candidate=p.storage||p.website||null; }
+  if(!candidate && mem().key && mem().key.pub===pubkey && state.storage) candidate=state.storage;
+  if(!candidate){ renderNostr(doc?'nostorage':'noaccount'); renderBridge(); coach(); remember({pubkey,webId:null,pod:null,name:state.name||null,ts:Date.now()}); return; }
+  state.candidate=candidate;
+  // 3. VERIFY the backlink: fetch the WebID, check it actually lists this pubkey
+  const v=await verifyWebId(candidate, pubkey);
+  const bridged = v.ok || (fromResolver && !v.readable);  // trust resolver's alsoKnownAs if the WebID isn't reachable from here
+  if(bridged){ state.webId=candidate; state.pod=podRoot(candidate); state.verified=true; renderNostr('storage'); }
+  else { renderNostr('unconfirmed'); }
   renderBridge(); coach();
-  remember({pubkey, webId:state.webId, pod:state.pod, name:state.name||null, ts:Date.now()});
+  remember({pubkey, webId:state.verified?candidate:null, pod:state.verified?state.pod:null, name:state.name||null, ts:Date.now()});
+}
+async function verifyWebId(webId, pubkey){
+  try{
+    const r=await fetch(webId,{headers:{Accept:'text/turtle, application/ld+json;q=0.9, */*;q=0.8'}});
+    if(!r.ok) return {ok:false, readable:false, reason:String(r.status)};
+    const t=(await r.text()).toLowerCase();
+    return {ok:t.includes(pubkey.toLowerCase()), readable:true};  // matches fe70102<hex>, did:nostr:<hex>, raw hex
+  }catch(e){ return {ok:false, readable:false, reason:e.message}; }
+}
+function queryKind0(pubkey){
+  return new Promise(resolve=>{
+    const relays=(state.relays&&state.relays.length)?state.relays:defaultRelays;
+    let best=null, done=0, fin=false;
+    const out=()=>{ if(fin)return; fin=true; let p=null; try{ p=best?JSON.parse(best.content):null; }catch{} resolve(p); };
+    setTimeout(out, 6500);
+    const subid='r'+Math.random().toString(36).slice(2,8);
+    relays.forEach(url=>{
+      let ws, settled=false;
+      const one=()=>{ if(settled)return; settled=true; done++; if(done>=relays.length) out(); };
+      const t=setTimeout(()=>{ try{ws&&ws.close();}catch{} one(); },6000);
+      try{ ws=new WebSocket(url); }catch{ one(); return; }
+      ws.onopen=()=>{ try{ ws.send(JSON.stringify(['REQ',subid,{authors:[pubkey],kinds:[0],limit:1}])); }catch{ one(); } };
+      ws.onmessage=m=>{ try{ const d=JSON.parse(m.data);
+        if(d[0]==='EVENT'&&d[1]===subid){ const ev=d[2]; if(ev&&(!best||ev.created_at>best.created_at)) best=ev; }
+        else if(d[0]==='EOSE'&&d[1]===subid){ try{ws.send(JSON.stringify(['CLOSE',subid]));}catch{} try{ws.close();}catch{} clearTimeout(t); one(); }
+      }catch{} };
+      ws.onerror=()=>{ clearTimeout(t); try{ws.close();}catch{} one(); };
+    });
+  });
 }
 async function connectNostr(){
   if(!window.nostr){ renderNostr('nosigner'); coach(); return; }
@@ -368,8 +403,10 @@ function renderNostr(stage, detail){
   if(stage==='error'){ b.innerHTML=head+`<div class="result err">${esc(detail||'error')}</div>`+resetBtn(); return; }
   if(stage==='noaccount'){ b.innerHTML=head+`<div class="result warn"><b>Identity valid</b>, but no account at this resolver. Try another resolver, or add storage.</div>`+pubBtn()+fetchBtn()+resetBtn(); return; }
   if(stage==='nostorage'){ b.innerHTML=head+`<div class="result warn"><span class="pill warn">no storage</span> Identity resolves, but no <code>alsoKnownAs</code> pod is linked.</div>`+pubBtn()+fetchBtn()+resetBtn(); return; }
-  if(stage==='storage'){ b.innerHTML=head+`<div class="result ok"><span class="pill ok">has storage</span></div>
-    <div class="result"><div class="k">pod</div><div class="v"><a href="${esc(state.pod)}" target="_blank">${esc(state.pod)}</a></div></div>`+pubBtn()+fetchBtn()+resetBtn(); return; }
+  if(stage==='storage'){ b.innerHTML=head+`<div class="result ok"><span class="pill ok">bridged</span> the WebID lists this key.</div>
+    <div class="result"><div class="k">storage (webid)</div><div class="v"><a href="${esc(state.webId||state.pod)}" target="_blank">${esc(state.webId||state.pod)}</a></div></div>`+pubBtn()+fetchBtn()+resetBtn(); return; }
+  if(stage==='unconfirmed'){ b.innerHTML=head+`<div class="result warn"><span class="pill warn">unconfirmed</span> Storage is advertised, but that WebID doesn’t list this key (or isn’t reachable from here), so the bridge isn’t verified.</div>
+    <div class="result"><div class="k">advertised storage</div><div class="v"><a href="${esc(state.candidate)}" target="_blank">${esc(state.candidate)}</a></div></div>`+pubBtn()+fetchBtn()+resetBtn(); return; }
 }
 renderNostr.idleInputs=()=>`<input type="text" id="nKeyInput" placeholder="hex pubkey (or npub)" /><button class="btn ghost sm" onclick="pasteNostr()">Resolve</button><div class="muted" id="nKeyMsg"></div>`;
 function resetBtn(){
@@ -420,8 +457,9 @@ function coach(){
   const hi=state.name?`Hi ${esc(state.name)}! `:'';
   let msg, s1='now',s2='',s3='';
   if(!haveKey){ msg=hi+'Start by signing in with your Nostr key, pasting a hex key, or generating a fresh one. We’ll look up whether it already has Solid storage.'; }
-  else if(haveStorage){ msg=hi+'🎉 <b>Bridged.</b> Your Nostr identity is linked to a Solid pod — apps can now find your storage from your key alone.'; s1='done';s2='done';s3='done'; }
-  else { msg='Your Nostr identity resolves, but <b>no storage is linked yet</b>. Add a pod, then link it to your key (add it to <code>alsoKnownAs</code> in your did:nostr document).'; s1='done';s2='now'; }
+  else if(haveStorage){ msg=hi+'🎉 <b>Bridged.</b> The WebID lists your key, so apps can resolve your storage from your key alone.'; s1='done';s2='done';s3='done'; }
+  else if(state.candidate){ msg='Your profile advertises storage at <code>'+esc(state.candidate)+'</code>, but that WebID doesn’t list this key yet — the bridge isn’t confirmed. Add your key to the pod’s profile (a <code>verificationMethod</code>), or check from a context that can reach the pod.'; s1='done';s2='now'; }
+  else { msg='Your Nostr identity resolves, but <b>no storage is linked yet</b>. Add a pod, point your profile at it, and add your key to the pod’s WebID.'; s1='done';s2='now'; }
   let cmd='';
   if(haveKey && !haveStorage){ cmd=`
     <div class="muted" style="margin:10px 0 6px">Get a pod — recommended: <a href="https://solidweb.app/idp/register" target="_blank"><b>solidweb.app</b></a> (free hosted, ~1&nbsp;min). Or self-host:</div>
