@@ -191,7 +191,7 @@ const STATIC_HOSTS = /(?:^|\.)(?:github\.io|pages\.dev|netlify\.app|vercel\.app)
 const servedFromPod = location.protocol.startsWith('http') && !STATIC_HOSTS.test(location.hostname);
 // served from a pod → use that origin; on static hosts (github.io) fall back to a sensible default
 const defaultStorage = (servedFromPod ? location.origin : 'http://localhost:5444') + '/profile/card.jsonld#me';
-const state={ pubkey:null, doc:null, webId:null, pod:null, resolver: mem().resolver || defaultResolver, linkedKey:null, name:'', storage:'', relays:[], candidate:null, verified:false };
+const state={ pubkey:null, doc:null, webId:null, pod:null, resolver: mem().resolver || defaultResolver, linkedKey:null, name:'', storage:'', relays:[], candidate:null, verified:false, unconfReason:'' };
 
 /* --- NOSTR → SOLID : find a candidate WebID, then VERIFY it actually lists this pubkey --- */
 async function resolveStorage(pubkey){
@@ -213,7 +213,7 @@ async function resolveStorage(pubkey){
   const v=await verifyWebId(candidate, pubkey);
   const bridged = v.ok || (fromResolver && !v.readable);  // trust resolver's alsoKnownAs if the WebID isn't reachable from here
   if(bridged){ state.webId=candidate; state.pod=podRoot(candidate); state.verified=true; renderNostr('storage'); }
-  else { renderNostr('unconfirmed'); }
+  else { state.unconfReason = (location.protocol==='https:'&&/^http:\/\//i.test(candidate))?'mixed':(v.readable?'nokey':'unreachable'); renderNostr('unconfirmed'); }
   renderBridge(); coach();
   remember({pubkey, webId:state.verified?candidate:null, pod:state.verified?state.pod:null, name:state.name||null, ts:Date.now()});
 }
@@ -405,7 +405,13 @@ function renderNostr(stage, detail){
   if(stage==='nostorage'){ b.innerHTML=head+`<div class="result warn"><span class="pill warn">no storage</span> Identity resolves, but no <code>alsoKnownAs</code> pod is linked.</div>`+pubBtn()+fetchBtn()+resetBtn(); return; }
   if(stage==='storage'){ b.innerHTML=head+`<div class="result ok"><span class="pill ok">bridged</span> the WebID lists this key.</div>
     <div class="result"><div class="k">storage (webid)</div><div class="v"><a href="${esc(state.webId||state.pod)}" target="_blank">${esc(state.webId||state.pod)}</a></div></div>`+pubBtn()+fetchBtn()+resetBtn(); return; }
-  if(stage==='unconfirmed'){ b.innerHTML=head+`<div class="result warn"><span class="pill warn">unconfirmed</span> Storage is advertised, but that WebID doesn’t list this key (or isn’t reachable from here), so the bridge isn’t verified.</div>
+  if(stage==='unconfirmed'){
+    const hints={
+      mixed:'This page is <b>https</b> but your storage is <b>http&#8203;://localhost</b> — browsers block that cross-origin. Open bridges from your pod (<code>http://localhost:5444/public/apps/bridges/</code>) to verify.',
+      nokey:'That WebID is reachable but doesn’t list this key yet — add your key to the pod’s profile to finish the bridge.',
+      unreachable:'Couldn’t read that WebID (blocked by the browser/extension, offline, or not public).'
+    };
+    b.innerHTML=head+`<div class="result warn"><span class="pill warn">unconfirmed</span> ${hints[state.unconfReason]||'Storage advertised, but not verified.'}</div>
     <div class="result"><div class="k">advertised storage</div><div class="v"><a href="${esc(state.candidate)}" target="_blank">${esc(state.candidate)}</a></div></div>`+pubBtn()+fetchBtn()+resetBtn(); return; }
 }
 renderNostr.idleInputs=()=>`<input type="text" id="nKeyInput" placeholder="hex pubkey (or npub)" /><button class="btn ghost sm" onclick="pasteNostr()">Resolve</button><div class="muted" id="nKeyMsg"></div>`;
