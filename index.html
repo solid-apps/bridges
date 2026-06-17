@@ -166,6 +166,14 @@ function toPubkey(input){
   if(input.startsWith('did:nostr:')) return toPubkey(input.slice(10));
   return null;
 }
+/* --- bech32 encode (for npub/nsec) --- */
+function b32Polymod(v){ const G=[0x3b6a57b2,0x26508e6d,0x1ea119fa,0x3d4233dd,0x2a1462b3]; let c=1; for(const x of v){ const b=c>>25; c=((c&0x1ffffff)<<5)^x; for(let i=0;i<5;i++) if((b>>i)&1) c^=G[i]; } return c; }
+function b32Hrp(h){ const o=[]; for(let i=0;i<h.length;i++) o.push(h.charCodeAt(i)>>5); o.push(0); for(let i=0;i<h.length;i++) o.push(h.charCodeAt(i)&31); return o; }
+function b32Encode(hrp,data){ const chk=b32Polymod(b32Hrp(hrp).concat(data).concat([0,0,0,0,0,0]))^1; const cs=[]; for(let i=0;i<6;i++) cs.push((chk>>5*(5-i))&31); let s=hrp+'1'; for(const d of data.concat(cs)) s+=B32[d]; return s; }
+function bytesToWords(bytes){ let acc=0,bits=0; const o=[]; for(const b of bytes){ acc=(acc<<8)|b; bits+=8; while(bits>=5){ bits-=5; o.push((acc>>bits)&31); } } if(bits) o.push((acc<<(5-bits))&31); return o; }
+function hexToBytes(h){ const a=[]; for(let i=0;i<h.length;i+=2) a.push(parseInt(h.slice(i,i+2),16)); return a; }
+function toNpub(hex){ return b32Encode('npub', bytesToWords(hexToBytes(hex))); }
+function toNsec(hex){ return b32Encode('nsec', bytesToWords(hexToBytes(hex))); }
 
 /* --- memory --- */
 function mem(){ try{ return JSON.parse(localStorage.getItem(LS))||{}; }catch{ return {}; } }
@@ -210,6 +218,36 @@ function pasteNostr(){
   resolveStorage(pk);
 }
 
+/* --- generate a brand-new key (newcomers) --- */
+async function generateKey(){
+  const b=$('nostrBody'); b.innerHTML='<div class="muted">Generating a fresh key…</div>';
+  let secp;
+  try{ const M=await import('https://esm.sh/@noble/secp256k1@1.7.1'); secp=M.schnorr?M:(M.default||M); }
+  catch(e){ b.innerHTML='<div class="result err">Couldn’t load the crypto library: '+esc(e.message)+'</div>'+resetBtn(); return; }
+  const priv=secp.utils.randomPrivateKey();
+  const privHex=secp.utils.bytesToHex(priv);
+  const pubHex=secp.utils.bytesToHex(secp.schnorr.getPublicKey(priv));
+  const m=mem(); m.key={pub:pubHex, priv:privHex}; saveMem(m);  // local self-custody (guest key)
+  showNewKey(toNpub(pubHex), toNsec(privHex), pubHex);
+}
+function showNewKey(npub, nsec, pubHex){
+  $('nostrBody').innerHTML=`
+    <div class="result warn"><b>⚠ Back this up now.</b> Your secret key is the <b>only</b> copy — no reset, no recovery. Anyone who has it controls your identity.</div>
+    <div class="result"><div class="k">public · npub (shareable)</div><div class="v">${esc(npub)}</div>
+      <button class="btn ghost sm" onclick="copyText(this,'${npub}')" style="margin-top:6px">copy npub</button></div>
+    <div class="result"><div class="k">secret · nsec (keep private)</div><div class="v">${esc(nsec)}</div>
+      <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+        <button class="btn ghost sm" onclick="copyText(this,'${nsec}')">copy nsec</button>
+        <button class="btn ghost sm" onclick="downloadKey('${npub}','${nsec}')">download backup</button></div></div>
+    <button class="btn nostr" onclick="resolveStorage('${pubHex}')" style="margin-top:auto">I’ve saved it — continue</button>
+    <div class="muted">For real safety, import this nsec into a signer (Alby, nos2x, nsec.app).</div>`;
+}
+function copyText(btn,txt){ navigator.clipboard?.writeText(txt); const t=btn.textContent; btn.textContent='copied ✓'; setTimeout(()=>btn.textContent=t,1200); }
+function downloadKey(npub,nsec){
+  const body=`Nostr identity backup\n\nnpub (public):  ${npub}\nnsec (SECRET):  ${nsec}\n\nAnyone with the nsec controls this identity. There is no recovery — store it safely.`;
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([body],{type:'text/plain'})); a.download='nostr-key-backup.txt'; a.click();
+}
+
 /* --- SOLID → NOSTR : find linked key --- */
 async function findFromSolid(){
   const input=($('sInput').value||'').trim(); if(!input) return;
@@ -234,7 +272,9 @@ function renderNostr(stage, detail){
     <div class="or">or paste a key</div>
     <input type="text" id="nKeyInput" placeholder="npub1… or hex pubkey" />
     <button class="btn ghost sm" onclick="pasteNostr()">Resolve</button>
-    <div class="muted" id="nKeyMsg"></div>`; return; }
+    <div class="muted" id="nKeyMsg"></div>
+    <div class="or">no key yet?</div>
+    <button class="btn ghost" onclick="generateKey()">✨ Generate a new key</button>`; return; }
   const pk=state.pubkey;
   const head=`<div class="result"><div class="k">pubkey</div><div class="v">${esc(short(pk))}</div></div>`;
   if(stage==='resolving'){ b.innerHTML=head+`<div class="muted">Resolving storage via ${esc(state.resolver)}…</div>`; return; }
@@ -310,6 +350,7 @@ function forget(pk){ const m=mem(); m.recent=(m.recent||[]).filter(e=>e.pubkey!=
 window.connectNostr=connectNostr; window.pasteNostr=pasteNostr; window.findFromSolid=findFromSolid;
 window.renderNostr=renderNostr; window.renderBridge=renderBridge; window.resolveStorage=resolveStorage;
 window.renderSolid=renderSolid; window.copyCmd=copyCmd; window.forget=forget;
+window.generateKey=generateKey; window.copyText=copyText; window.downloadKey=downloadKey;
 $('resolverInput').value=state.resolver;
 $('resolverInput').onchange=e=>{ state.resolver=e.target.value.trim()||defaultResolver; const m=mem();m.resolver=state.resolver;saveMem(m); };
 renderNostr('idle'); renderSolid('idle'); renderBridge(); coach(); renderRecent();
