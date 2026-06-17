@@ -186,6 +186,10 @@ const isLocalPod = location.protocol.startsWith('http') && /^(localhost|127\.0\.
 const defaultResolver = isLocalPod ? location.origin : 'https://nostr.social';
 const DEFAULT_RELAYS = ['wss://relay.damus.io','wss://nos.lol','wss://relay.nostr.band'];
 const defaultRelays = (isLocalPod ? [location.origin.replace(/^http/,'ws')+'/relay'] : []).concat(DEFAULT_RELAYS);
+// storage often = the pod you're served from — but NOT on static hosts (github.io etc.)
+const STATIC_HOSTS = /(?:^|\.)(?:github\.io|pages\.dev|netlify\.app|vercel\.app)$/i;
+const servedFromPod = location.protocol.startsWith('http') && !STATIC_HOSTS.test(location.hostname);
+const defaultStorage = servedFromPod ? location.origin + '/profile/card.jsonld#me' : '';
 const state={ pubkey:null, doc:null, webId:null, pod:null, resolver: mem().resolver || defaultResolver, linkedKey:null, name:'', storage:'', relays:[] };
 
 /* --- NOSTR → SOLID : resolve storage --- */
@@ -460,7 +464,7 @@ if(qsName){ const m=mem(); m.name=state.name; saveMem(m); }
 $('nameInput').value=state.name;
 $('nameInput').oninput=e=>{ state.name=e.target.value.trim(); const m=mem(); m.name=state.name; saveMem(m); coach(); };
 const qsStorage=new URLSearchParams(location.search).get('storage');
-state.storage=(qsStorage||mem().storage||'').trim();
+state.storage=(qsStorage||mem().storage||defaultStorage||'').trim();
 if(qsStorage){ const m=mem(); m.storage=state.storage; saveMem(m); }
 $('storageInput').value=state.storage;
 $('storageInput').oninput=e=>{ state.storage=e.target.value.trim(); const m=mem(); m.storage=state.storage; saveMem(m); };
