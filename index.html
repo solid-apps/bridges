@@ -178,8 +178,10 @@ function remember(entry){
 }
 
 /* --- state --- */
-const defaultResolver = location.protocol.startsWith('http') && !/^file/.test(location.protocol)
-  ? location.origin : 'https://nostr.social';
+// Use the served-from origin ONLY when it's a local pod (a real resolver); on public/static
+// hosts (e.g. GitHub Pages) that origin is NOT a did:nostr resolver, so fall back to nostr.social.
+const isLocalPod = location.protocol.startsWith('http') && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+const defaultResolver = isLocalPod ? location.origin : 'https://nostr.social';
 const state={ pubkey:null, doc:null, webId:null, pod:null, resolver: mem().resolver || defaultResolver, linkedKey:null, name:'' };
 
 /* --- NOSTR → SOLID : resolve storage --- */
