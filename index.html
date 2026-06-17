@@ -117,7 +117,8 @@
     <!-- NOSTR side -->
     <div class="node nostr">
       <div class="node-h"><span class="ico">⚡</span><b>Nostr</b><small>identity</small></div>
-      <input type="text" id="nameInput" placeholder="your name (optional)" style="margin-bottom:10px" />
+      <input type="text" id="nameInput" placeholder="your name (optional)" style="margin-bottom:8px" />
+      <input type="text" id="storageInput" placeholder="your storage / pod URL (optional)" style="margin-bottom:10px" />
       <div class="node-b" id="nostrBody"></div>
     </div>
 
@@ -185,7 +186,7 @@ const isLocalPod = location.protocol.startsWith('http') && /^(localhost|127\.0\.
 const defaultResolver = isLocalPod ? location.origin : 'https://nostr.social';
 const DEFAULT_RELAYS = ['wss://relay.damus.io','wss://nos.lol','wss://relay.nostr.band'];
 const defaultRelays = (isLocalPod ? [location.origin.replace(/^http/,'ws')+'/relay'] : []).concat(DEFAULT_RELAYS);
-const state={ pubkey:null, doc:null, webId:null, pod:null, resolver: mem().resolver || defaultResolver, linkedKey:null, name:'', relays:[] };
+const state={ pubkey:null, doc:null, webId:null, pod:null, resolver: mem().resolver || defaultResolver, linkedKey:null, name:'', storage:'', relays:[] };
 
 /* --- NOSTR → SOLID : resolve storage --- */
 async function resolveStorage(pubkey){
@@ -269,7 +270,8 @@ async function signEvent(evt){
 async function publishProfile(){
   if(!state.pubkey) return;
   setPubStatus('Signing…');
-  const content={}; if(state.name) content.name=state.name; if(state.pod) content.website=state.pod;
+  const content={}; if(state.name) content.name=state.name;
+  const stor=state.storage||state.pod||''; if(stor){ content.storage=stor; content.website=stor; }
   let evt={kind:0, created_at:Math.floor(Date.now()/1000), tags:[], content:JSON.stringify(content), pubkey:state.pubkey};
   try{ evt=await signEvent(evt); }catch(e){ setPubStatus('Sign failed: '+e.message); return; }
   publishEvent(evt);
@@ -315,13 +317,15 @@ function renderFetched(ev){
   if(!ev){ setFetchStatus('No profile found on relays for this key yet — publish one first.'); return; }
   let p={}; try{ p=JSON.parse(ev.content)||{}; }catch{}
   if(p.name && !state.name){ state.name=p.name; const m=mem(); m.name=p.name; saveMem(m); const ni=$('nameInput'); if(ni) ni.value=p.name; }
+  const stor=p.storage||p.website||'';
+  if(stor && !state.storage){ state.storage=stor; const m=mem(); m.storage=stor; saveMem(m); const si=$('storageInput'); if(si) si.value=stor; }
   const when=new Date(ev.created_at*1000).toLocaleString();
   setFetchStatus('Found on relays (updated '+esc(when)+'):<br>'+
     (p.picture?`<img src="${esc(p.picture)}" alt="" style="width:38px;height:38px;border-radius:50%;vertical-align:middle;margin:4px 8px 2px 0">`:'')+
     (p.name?`<b style="color:var(--ink)">${esc(p.name)}</b>`:'<i>(no name)</i>')+
     (p.nip05?` · ${esc(p.nip05)}`:'')+
     (p.about?`<div style="margin-top:2px">${esc(p.about)}</div>`:'')+
-    (p.website?`<div style="margin-top:2px">🔗 <a href="${esc(p.website)}" target="_blank" rel="noopener">${esc(p.website)}</a></div>`:''));
+    (stor?`<div style="margin-top:2px">📦 storage: <a href="${esc(stor)}" target="_blank" rel="noopener">${esc(stor)}</a></div>`:''));
 }
 
 /* --- SOLID → NOSTR : find linked key --- */
@@ -455,6 +459,11 @@ state.name=(qsName||mem().name||'').trim();
 if(qsName){ const m=mem(); m.name=state.name; saveMem(m); }
 $('nameInput').value=state.name;
 $('nameInput').oninput=e=>{ state.name=e.target.value.trim(); const m=mem(); m.name=state.name; saveMem(m); coach(); };
+const qsStorage=new URLSearchParams(location.search).get('storage');
+state.storage=(qsStorage||mem().storage||'').trim();
+if(qsStorage){ const m=mem(); m.storage=state.storage; saveMem(m); }
+$('storageInput').value=state.storage;
+$('storageInput').oninput=e=>{ state.storage=e.target.value.trim(); const m=mem(); m.storage=state.storage; saveMem(m); };
 /* reuse the saved key if there is one (one bespoke key, kept until "forget") */
 if(mem().key && mem().key.pub){ state.pubkey=mem().key.pub; resolveStorage(state.pubkey); } else { renderNostr('idle'); }
 renderSolid('idle'); renderBridge(); coach(); renderRecent();
