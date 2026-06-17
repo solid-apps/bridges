@@ -216,6 +216,7 @@ function pasteNostr(){
 
 /* --- generate a brand-new key (newcomers) --- */
 async function generateKey(){
+  if(mem().key && mem().key.priv && !confirm('You already have a saved key. Replace it with a new one? Your current identity will be forgotten — back it up first.')) return;
   const b=$('nostrBody'); b.innerHTML='<div class="muted">Generating a fresh key…</div>';
   let secp;
   try{ const M=await import('https://esm.sh/@noble/secp256k1@1.7.1'); secp=M.schnorr?M:(M.default||M); }
@@ -283,14 +284,28 @@ function renderNostr(stage, detail){
     <div class="result"><div class="k">pod</div><div class="v"><a href="${esc(state.pod)}" target="_blank">${esc(state.pod)}</a></div></div>`+resetBtn(); return; }
 }
 renderNostr.idleInputs=()=>`<input type="text" id="nKeyInput" placeholder="hex pubkey (or npub)" /><button class="btn ghost sm" onclick="pasteNostr()">Resolve</button><div class="muted" id="nKeyMsg"></div>`;
-function resetBtn(){ return `<button class="btn ghost sm" onclick="renderNostr('idle');renderBridge()" style="margin-top:auto">↺ start over</button>`; }
+function resetBtn(){
+  const stored = mem().key && mem().key.pub===state.pubkey;
+  return stored
+    ? `<button class="btn ghost sm" onclick="forgetKey()" style="margin-top:auto">forget this key</button>`
+    : `<button class="btn ghost sm" onclick="nostrReset()" style="margin-top:auto">↺ back</button>`;
+}
+function nostrReset(){ const k=mem().key; if(k&&k.pub){ state.pubkey=k.pub; resolveStorage(k.pub); } else { state.pubkey=null; state.doc=null; state.webId=null; state.pod=null; renderNostr('idle'); renderBridge(); coach(); } }
+function forgetKey(){
+  if(!confirm('Forget your saved key? There is no recovery — make sure you have a backup first.')) return;
+  const m=mem(); delete m.key; saveMem(m);
+  state.pubkey=null; state.doc=null; state.webId=null; state.pod=null;
+  renderNostr('idle'); renderBridge(); coach();
+}
 
 function renderSolid(stage, url){
   const b=$('solidBody');
   if(stage==='idle'){ b.innerHTML=`
     <input type="text" id="sInput" placeholder="your WebID or pod URL" />
     <button class="btn solid sm" onclick="findFromSolid()">Find linked Nostr key</button>
-    <div class="muted">Have a pod but no key linked? This finds it from the other side.</div>`; return; }
+    <div class="muted">Have a pod but no key linked? This finds it from the other side.</div>
+    <div class="or">no pod yet?</div>
+    <a class="btn solid" href="https://solidweb.app/" target="_blank" rel="noopener" style="margin-top:auto;text-decoration:none">Get a Solid pod →</a>`; return; }
   if(stage==='finding'){ b.innerHTML=`<div class="muted">Reading profile…</div>`; return; }
   if(stage==='error'){ b.innerHTML=`<div class="result err">${esc(url||'error')}</div>`+solidReset(); return; }
   if(stage==='found'){ b.innerHTML=`<div class="result"><div class="k">profile</div><div class="v">${esc(url)}</div></div>
@@ -348,6 +363,7 @@ window.connectNostr=connectNostr; window.pasteNostr=pasteNostr; window.findFromS
 window.renderNostr=renderNostr; window.renderBridge=renderBridge; window.resolveStorage=resolveStorage;
 window.renderSolid=renderSolid; window.copyCmd=copyCmd; window.forget=forget;
 window.generateKey=generateKey; window.copyText=copyText; window.downloadKey=downloadKey;
+window.forgetKey=forgetKey; window.nostrReset=nostrReset; window.state=state; window.mem=mem;
 $('resolverInput').value=state.resolver;
 $('resolverInput').onchange=e=>{ state.resolver=e.target.value.trim()||defaultResolver; const m=mem();m.resolver=state.resolver;saveMem(m); };
 /* name: from ?name= query string, else remembered */
@@ -356,7 +372,9 @@ state.name=(qsName||mem().name||'').trim();
 if(qsName){ const m=mem(); m.name=state.name; saveMem(m); }
 $('nameInput').value=state.name;
 $('nameInput').oninput=e=>{ state.name=e.target.value.trim(); const m=mem(); m.name=state.name; saveMem(m); coach(); };
-renderNostr('idle'); renderSolid('idle'); renderBridge(); coach(); renderRecent();
+/* reuse the saved key if there is one (one bespoke key, kept until "forget") */
+if(mem().key && mem().key.pub){ state.pubkey=mem().key.pub; resolveStorage(state.pubkey); } else { renderNostr('idle'); }
+renderSolid('idle'); renderBridge(); coach(); renderRecent();
 </script>
 </body>
 </html>
