@@ -288,6 +288,42 @@ function publishEvent(evt){
   });
 }
 
+/* --- fetch profile (kind 0) from relays — the read counterpart to publish --- */
+function fetchBtn(){ return state.pubkey?`<button class="btn ghost sm" onclick="fetchProfile()" style="margin-top:8px">⤓ Fetch profile from relays</button><div class="muted" id="fetchStatus"></div>`:''; }
+function setFetchStatus(t){ const e=$('fetchStatus'); if(e) e.innerHTML=t; }
+function fetchProfile(){
+  if(!state.pubkey) return;
+  const relays=(state.relays&&state.relays.length)?state.relays:defaultRelays;
+  setFetchStatus('Querying '+relays.length+' relays…');
+  const subid='p'+Math.random().toString(36).slice(2,8);
+  let best=null, done=0;
+  const close=ws=>{ try{ ws&&ws.close(); }catch{} };
+  relays.forEach(url=>{
+    let ws, settled=false;
+    const fin=()=>{ if(settled)return; settled=true; clearTimeout(t); done++; if(done>=relays.length) renderFetched(best); };
+    const t=setTimeout(()=>{ close(ws); fin(); }, 6000);
+    try{ ws=new WebSocket(url); }catch{ fin(); return; }
+    ws.onopen=()=>{ try{ ws.send(JSON.stringify(['REQ',subid,{authors:[state.pubkey],kinds:[0],limit:1}])); }catch{ fin(); } };
+    ws.onmessage=m=>{ try{ const d=JSON.parse(m.data);
+      if(d[0]==='EVENT'&&d[1]===subid){ const ev=d[2]; if(ev&&(!best||ev.created_at>best.created_at)) best=ev; }
+      else if(d[0]==='EOSE'&&d[1]===subid){ try{ws.send(JSON.stringify(['CLOSE',subid]));}catch{} close(ws); fin(); }
+    }catch{} };
+    ws.onerror=()=>{ close(ws); fin(); };
+  });
+}
+function renderFetched(ev){
+  if(!ev){ setFetchStatus('No profile found on relays for this key yet — publish one first.'); return; }
+  let p={}; try{ p=JSON.parse(ev.content)||{}; }catch{}
+  if(p.name && !state.name){ state.name=p.name; const m=mem(); m.name=p.name; saveMem(m); const ni=$('nameInput'); if(ni) ni.value=p.name; }
+  const when=new Date(ev.created_at*1000).toLocaleString();
+  setFetchStatus('Found on relays (updated '+esc(when)+'):<br>'+
+    (p.picture?`<img src="${esc(p.picture)}" alt="" style="width:38px;height:38px;border-radius:50%;vertical-align:middle;margin:4px 8px 2px 0">`:'')+
+    (p.name?`<b style="color:var(--ink)">${esc(p.name)}</b>`:'<i>(no name)</i>')+
+    (p.nip05?` · ${esc(p.nip05)}`:'')+
+    (p.about?`<div style="margin-top:2px">${esc(p.about)}</div>`:'')+
+    (p.website?`<div style="margin-top:2px">🔗 <a href="${esc(p.website)}" target="_blank" rel="noopener">${esc(p.website)}</a></div>`:''));
+}
+
 /* --- SOLID → NOSTR : find linked key --- */
 async function findFromSolid(){
   const input=($('sInput').value||'').trim(); if(!input) return;
@@ -321,10 +357,10 @@ function renderNostr(stage, detail){
   if(stage==='resolving'){ b.innerHTML=head+`<div class="muted">Resolving storage via ${esc(state.resolver)}…</div>`; return; }
   if(stage==='nosigner'){ b.innerHTML=`<div class="result err">No Nostr signer found. Install a NIP-07 extension (Alby, nos2x) or paste a key.</div>`+renderNostr.idleInputs(); return; }
   if(stage==='error'){ b.innerHTML=head+`<div class="result err">${esc(detail||'error')}</div>`+resetBtn(); return; }
-  if(stage==='noaccount'){ b.innerHTML=head+`<div class="result warn"><b>Identity valid</b>, but no account at this resolver. Try another resolver, or add storage.</div>`+pubBtn()+resetBtn(); return; }
-  if(stage==='nostorage'){ b.innerHTML=head+`<div class="result warn"><span class="pill warn">no storage</span> Identity resolves, but no <code>alsoKnownAs</code> pod is linked.</div>`+pubBtn()+resetBtn(); return; }
+  if(stage==='noaccount'){ b.innerHTML=head+`<div class="result warn"><b>Identity valid</b>, but no account at this resolver. Try another resolver, or add storage.</div>`+pubBtn()+fetchBtn()+resetBtn(); return; }
+  if(stage==='nostorage'){ b.innerHTML=head+`<div class="result warn"><span class="pill warn">no storage</span> Identity resolves, but no <code>alsoKnownAs</code> pod is linked.</div>`+pubBtn()+fetchBtn()+resetBtn(); return; }
   if(stage==='storage'){ b.innerHTML=head+`<div class="result ok"><span class="pill ok">has storage</span></div>
-    <div class="result"><div class="k">pod</div><div class="v"><a href="${esc(state.pod)}" target="_blank">${esc(state.pod)}</a></div></div>`+pubBtn()+resetBtn(); return; }
+    <div class="result"><div class="k">pod</div><div class="v"><a href="${esc(state.pod)}" target="_blank">${esc(state.pod)}</a></div></div>`+pubBtn()+fetchBtn()+resetBtn(); return; }
 }
 renderNostr.idleInputs=()=>`<input type="text" id="nKeyInput" placeholder="hex pubkey (or npub)" /><button class="btn ghost sm" onclick="pasteNostr()">Resolve</button><div class="muted" id="nKeyMsg"></div>`;
 function resetBtn(){
@@ -407,7 +443,7 @@ window.renderNostr=renderNostr; window.renderBridge=renderBridge; window.resolve
 window.renderSolid=renderSolid; window.copyCmd=copyCmd; window.forget=forget;
 window.generateKey=generateKey; window.copyText=copyText; window.downloadKey=downloadKey;
 window.forgetKey=forgetKey; window.nostrReset=nostrReset; window.state=state; window.mem=mem;
-window.publishProfile=publishProfile;
+window.publishProfile=publishProfile; window.fetchProfile=fetchProfile;
 $('resolverInput').value=state.resolver;
 $('resolverInput').onchange=e=>{ state.resolver=e.target.value.trim()||defaultResolver; const m=mem();m.resolver=state.resolver;saveMem(m); };
 state.relays=(mem().relays&&mem().relays.length)?mem().relays:defaultRelays;
