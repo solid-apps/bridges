@@ -117,6 +117,7 @@
     <!-- NOSTR side -->
     <div class="node nostr">
       <div class="node-h"><span class="ico">⚡</span><b>Nostr</b><small>identity</small></div>
+      <input type="text" id="nameInput" placeholder="your name (optional)" style="margin-bottom:10px" />
       <div class="node-b" id="nostrBody"></div>
     </div>
 
@@ -179,7 +180,7 @@ function remember(entry){
 /* --- state --- */
 const defaultResolver = location.protocol.startsWith('http') && !/^file/.test(location.protocol)
   ? location.origin : 'https://nostr.social';
-const state={ pubkey:null, doc:null, webId:null, pod:null, resolver: mem().resolver || defaultResolver, linkedKey:null };
+const state={ pubkey:null, doc:null, webId:null, pod:null, resolver: mem().resolver || defaultResolver, linkedKey:null, name:'' };
 
 /* --- NOSTR → SOLID : resolve storage --- */
 async function resolveStorage(pubkey){
@@ -197,7 +198,7 @@ async function resolveStorage(pubkey){
   if(aka.length){ state.webId=aka[0]; state.pod=podRoot(aka[0]); renderNostr('storage'); }
   else { renderNostr('nostorage'); }
   renderBridge(); coach();
-  remember({pubkey, webId:state.webId, pod:state.pod, ts:Date.now()});
+  remember({pubkey, webId:state.webId, pod:state.pod, name:state.name||null, ts:Date.now()});
 }
 async function connectNostr(){
   if(!window.nostr){ renderNostr('nosigner'); coach(); return; }
@@ -269,7 +270,8 @@ function renderNostr(stage, detail){
     <div class="or">no key yet?</div>
     <button class="btn ghost" onclick="generateKey()">✨ Generate a new key</button>`; return; }
   const pk=state.pubkey;
-  const head=`<div class="result"><div class="k">pubkey</div><div class="v">${esc(short(pk))}</div></div>`;
+  const nameRow=state.name?`<div class="result"><div class="k">name</div><div class="v">${esc(state.name)}</div></div>`:'';
+  const head=nameRow+`<div class="result"><div class="k">pubkey</div><div class="v">${esc(short(pk))}</div></div>`;
   if(stage==='resolving'){ b.innerHTML=head+`<div class="muted">Resolving storage via ${esc(state.resolver)}…</div>`; return; }
   if(stage==='nosigner'){ b.innerHTML=`<div class="result err">No Nostr signer found. Install a NIP-07 extension (Alby, nos2x) or paste a key.</div>`+renderNostr.idleInputs(); return; }
   if(stage==='error'){ b.innerHTML=head+`<div class="result err">${esc(detail||'error')}</div>`+resetBtn(); return; }
@@ -310,9 +312,10 @@ function coach(){
   const c=$('coach');
   const haveKey=!!state.pubkey, haveStorage=!!state.pod;
   const step=(n,label,st)=>`<div class="step ${st}"><span class="dot">${st==='done'?'✓':n}</span><div>${label}</div></div>`;
+  const hi=state.name?`Hi ${esc(state.name)}! `:'';
   let msg, s1='now',s2='',s3='';
-  if(!haveKey){ msg='Start by signing in with your Nostr key (or paste one). We’ll look up whether it already has Solid storage.'; }
-  else if(haveStorage){ msg='🎉 <b>Bridged.</b> Your Nostr identity is linked to a Solid pod — apps can now find your storage from your key alone.'; s1='done';s2='done';s3='done'; }
+  if(!haveKey){ msg=hi+'Start by signing in with your Nostr key, pasting a hex key, or generating a fresh one. We’ll look up whether it already has Solid storage.'; }
+  else if(haveStorage){ msg=hi+'🎉 <b>Bridged.</b> Your Nostr identity is linked to a Solid pod — apps can now find your storage from your key alone.'; s1='done';s2='done';s3='done'; }
   else { msg='Your Nostr identity resolves, but <b>no storage is linked yet</b>. Add a pod, then link it to your key (add it to <code>alsoKnownAs</code> in your did:nostr document).'; s1='done';s2='now'; }
   let cmd='';
   if(haveKey && !haveStorage){ cmd=`
@@ -334,7 +337,7 @@ function renderRecent(){
   if(!r.length){ $('recentSec').style.display='none'; return; }
   $('recentSec').style.display='';
   $('chips').innerHTML=r.map(e=>`<span class="chip" onclick="resolveStorage('${e.pubkey}')">
-    <span class="d ${e.pod?'ok':'warn'}"></span>${esc(short(e.pubkey))}<span class="x" onclick="event.stopPropagation();forget('${e.pubkey}')">×</span></span>`).join('');
+    <span class="d ${e.pod?'ok':'warn'}"></span>${esc(e.name||short(e.pubkey))}<span class="x" onclick="event.stopPropagation();forget('${e.pubkey}')">×</span></span>`).join('');
 }
 function forget(pk){ const m=mem(); m.recent=(m.recent||[]).filter(e=>e.pubkey!==pk); saveMem(m); renderRecent(); }
 
@@ -345,6 +348,12 @@ window.renderSolid=renderSolid; window.copyCmd=copyCmd; window.forget=forget;
 window.generateKey=generateKey; window.copyText=copyText; window.downloadKey=downloadKey;
 $('resolverInput').value=state.resolver;
 $('resolverInput').onchange=e=>{ state.resolver=e.target.value.trim()||defaultResolver; const m=mem();m.resolver=state.resolver;saveMem(m); };
+/* name: from ?name= query string, else remembered */
+const qsName=new URLSearchParams(location.search).get('name');
+state.name=(qsName||mem().name||'').trim();
+if(qsName){ const m=mem(); m.name=state.name; saveMem(m); }
+$('nameInput').value=state.name;
+$('nameInput').oninput=e=>{ state.name=e.target.value.trim(); const m=mem(); m.name=state.name; saveMem(m); coach(); };
 renderNostr('idle'); renderSolid('idle'); renderBridge(); coach(); renderRecent();
 </script>
 </body>
