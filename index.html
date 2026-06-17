@@ -189,7 +189,8 @@ const defaultRelays = (isLocalPod ? [location.origin.replace(/^http/,'ws')+'/rel
 // storage often = the pod you're served from — but NOT on static hosts (github.io etc.)
 const STATIC_HOSTS = /(?:^|\.)(?:github\.io|pages\.dev|netlify\.app|vercel\.app)$/i;
 const servedFromPod = location.protocol.startsWith('http') && !STATIC_HOSTS.test(location.hostname);
-const defaultStorage = servedFromPod ? location.origin + '/profile/card.jsonld#me' : '';
+// served from a pod → use that origin; on static hosts (github.io) fall back to a sensible default
+const defaultStorage = (servedFromPod ? location.origin : 'http://localhost:5444') + '/profile/card.jsonld#me';
 const state={ pubkey:null, doc:null, webId:null, pod:null, resolver: mem().resolver || defaultResolver, linkedKey:null, name:'', storage:'', relays:[] };
 
 /* --- NOSTR → SOLID : resolve storage --- */
