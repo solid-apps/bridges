@@ -1,0 +1,30 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:1200px;height:630px;overflow:hidden;}
+  body{font-family:'Segoe UI',Roboto,system-ui,Arial,sans-serif;
+    background:radial-gradient(120% 140% at 15% 10%, #9a6bff 0%, #7c4dff 38%, #2f6df6 100%);
+    color:#fff;display:flex;flex-direction:column;justify-content:center;padding:80px 88px;position:relative;}
+  .dots{position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.10) 1.5px,transparent 1.5px);background-size:34px 34px;}
+  .kicker{font-size:26px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;opacity:.82;position:relative;}
+  h1{font-size:138px;font-weight:800;letter-spacing:-3px;line-height:1;margin:10px 0 26px;position:relative;}
+  .sub{font-size:40px;font-weight:500;opacity:.94;max-width:900px;position:relative;line-height:1.25;}
+  .nodes{display:flex;align-items:center;gap:0;margin-top:54px;position:relative;}
+  .pill{display:flex;align-items:center;gap:16px;background:rgba(255,255,255,.16);backdrop-filter:blur(4px);
+    border:1px solid rgba(255,255,255,.32);border-radius:999px;padding:18px 30px;font-size:34px;font-weight:700;}
+  .pill .g{width:40px;height:40px;}
+  .link{flex:1;height:6px;border-radius:6px;background:rgba(255,255,255,.6);margin:0 -10px;position:relative;z-index:-0;max-width:240px;}
+  .foot{position:absolute;bottom:54px;left:88px;font-size:26px;font-weight:600;opacity:.78;}
+  .foot2{position:absolute;bottom:54px;right:88px;font-size:26px;font-weight:600;opacity:.78;}
+</style></head><body>
+  <div class="dots"></div>
+  <div class="kicker">solid-apps</div>
+  <h1>Bridges</h1>
+  <div class="sub">Connect your Nostr identity and your Solid storage — from both sides.</div>
+  <div class="nodes">
+    <div class="pill"><svg class="g" viewBox="0 0 24 24" fill="#fff"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>Nostr</div>
+    <div class="link"></div>
+    <div class="pill"><svg class="g" viewBox="0 0 24 24" fill="#fff"><path d="M12 2 22 12 12 22 2 12z"/></svg>Solid</div>
+  </div>
+  <div class="foot">⚡ ⇄ ◆</div>
+  <div class="foot2">bridges · v0.0.1</div>
+</body></html>

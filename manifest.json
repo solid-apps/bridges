@@ -1,0 +1,14 @@
+{
+  "name": "Bridges — Nostr ⇄ Solid",
+  "short_name": "Bridges",
+  "description": "Connect your Nostr identity and your Solid storage — from both sides.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f4f6fb",
+  "theme_color": "#7c4dff",
+  "icons": [
+    { "src": "favicon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "any maskable" },
+    { "src": "icon-192.png", "type": "image/png", "sizes": "192x192" },
+    { "src": "icon-512.png", "type": "image/png", "sizes": "512x512" }
+  ]
+}

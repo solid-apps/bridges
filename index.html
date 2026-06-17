@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bridges — Nostr ⇄ Solid</title>
+<meta name="description" content="Connect your Nostr identity and your Solid storage — from both sides. Sign in with your Nostr key; find your pod or add one." />
+<meta name="theme-color" content="#7c4dff" />
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<link rel="manifest" href="manifest.json" />
+<link rel="canonical" href="https://solid-apps.github.io/bridges/" />
+<!-- Open Graph -->
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="solid-apps" />
+<meta property="og:title" content="Bridges — Nostr ⇄ Solid" />
+<meta property="og:description" content="Connect your Nostr identity and your Solid storage — from both sides. Sign in with your Nostr key; find your pod or add one." />
+<meta property="og:url" content="https://solid-apps.github.io/bridges/" />
+<meta property="og:image" content="https://solid-apps.github.io/bridges/og-image.png" />
+<meta property="og:image:type" content="image/png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="Bridges — connect your Nostr identity and your Solid storage" />
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Bridges — Nostr ⇄ Solid" />
+<meta name="twitter:description" content="Connect your Nostr identity and your Solid storage — from both sides." />
+<meta name="twitter:image" content="https://solid-apps.github.io/bridges/og-image.png" />
+<style>
+  :root{
+    --nostr:#8e5cff; --solid:#2f6df6; --ok:#1aa86b; --warn:#e08600; --err:#e0392b;
+    --bg:#f4f6fb; --card:#ffffff; --ink:#11161c; --ink-2:#5b6675; --ink-3:#9aa4b2;
+    --border:#e4e8ef; --chip:#eef1f7; --shadow:0 1px 3px rgba(16,35,47,.10);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:'Segoe UI',Roboto,system-ui,Arial,sans-serif;background:var(--bg);color:var(--ink);
+       -webkit-font-smoothing:antialiased;line-height:1.45;}
+  a{color:var(--solid);text-decoration:none;} a:hover{text-decoration:underline;}
+  code{background:var(--chip);padding:1px 6px;border-radius:6px;font-size:.9em;}
+  button{font-family:inherit;cursor:pointer;border:none;}
+  .wrap{max-width:860px;margin:0 auto;padding:32px 18px 60px;}
+  header{text-align:center;margin-bottom:26px;}
+  header h1{font-size:2rem;font-weight:700;letter-spacing:-.5px;}
+  header h1 .arr{background:linear-gradient(90deg,var(--nostr),var(--solid));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+  header p{color:var(--ink-2);margin-top:6px;}
+
+  .bridge{display:grid;grid-template-columns:1fr 120px 1fr;gap:0;align-items:stretch;}
+  @media(max-width:680px){ .bridge{grid-template-columns:1fr;} .span{order:2;padding:10px 0!important;} }
+  .node{background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:18px;min-height:210px;display:flex;flex-direction:column;}
+  .node.nostr{border-top:4px solid var(--nostr);}
+  .node.solid{border-top:4px solid var(--solid);}
+  .node-h{display:flex;align-items:center;gap:9px;margin-bottom:12px;}
+  .node-h .ico{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;}
+  .nostr .ico{background:var(--nostr);} .solid .ico{background:var(--solid);}
+  .node-h b{font-size:1.1rem;} .node-h small{color:var(--ink-3);margin-left:auto;font-size:.78rem;}
+  .node-b{flex:1;display:flex;flex-direction:column;gap:10px;}
+
+  .span{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:0 6px;position:relative;}
+  .span .line{width:100%;height:3px;border-radius:3px;background:var(--border);position:relative;overflow:hidden;}
+  .span .line.live{background:linear-gradient(90deg,var(--nostr),var(--solid));}
+  .span .badge{font-size:.74rem;font-weight:600;padding:3px 9px;border-radius:20px;background:var(--chip);color:var(--ink-2);white-space:nowrap;}
+  .span .badge.ok{background:rgba(26,168,107,.14);color:var(--ok);}
+  .span .badge.warn{background:rgba(224,134,0,.14);color:var(--warn);}
+
+  .btn{padding:10px 14px;border-radius:10px;font-weight:600;font-size:.95rem;color:#fff;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:.15s;}
+  .btn:hover{filter:brightness(1.06);} .btn:active{transform:translateY(1px);}
+  .btn.nostr{background:var(--nostr);} .btn.solid{background:var(--solid);}
+  .btn.ghost{background:var(--chip);color:var(--ink);} .btn.sm{padding:6px 10px;font-size:.85rem;}
+  input[type=text]{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px;font-size:.92rem;outline:none;background:#fff;color:var(--ink);}
+  input[type=text]:focus{border-color:var(--solid);box-shadow:0 0 0 3px rgba(47,109,246,.12);}
+  .or{display:flex;align-items:center;gap:8px;color:var(--ink-3);font-size:.78rem;}
+  .or::before,.or::after{content:'';flex:1;height:1px;background:var(--border);}
+
+  .result{font-size:.9rem;border-radius:10px;padding:10px 12px;background:var(--chip);}
+  .result.ok{background:rgba(26,168,107,.10);}
+  .result.warn{background:rgba(224,134,0,.10);}
+  .result.err{background:rgba(224,57,43,.10);}
+  .result .k{color:var(--ink-3);font-size:.74rem;text-transform:uppercase;letter-spacing:.04em;}
+  .result .v{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.84rem;word-break:break-all;}
+  .pill{display:inline-block;font-size:.74rem;font-weight:600;padding:2px 8px;border-radius:20px;}
+  .pill.ok{background:rgba(26,168,107,.16);color:var(--ok);}
+  .pill.warn{background:rgba(224,134,0,.16);color:var(--warn);}
+  .pill.err{background:rgba(224,57,43,.16);color:var(--err);}
+
+  .coach{margin-top:22px;background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:16px 18px;}
+  .coach h3{font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);margin-bottom:8px;}
+  .coach .msg{font-size:.95rem;}
+  .coach .steps{margin-top:10px;display:flex;flex-direction:column;gap:8px;}
+  .coach .step{display:flex;gap:10px;align-items:flex-start;font-size:.92rem;}
+  .coach .step .dot{width:18px;height:18px;border-radius:50%;flex-shrink:0;background:var(--chip);color:var(--ink-2);font-size:.72rem;display:flex;align-items:center;justify-content:center;font-weight:700;margin-top:1px;}
+  .coach .step.done .dot{background:var(--ok);color:#fff;}
+  .coach .step.now .dot{background:var(--solid);color:#fff;}
+  .coach .cmd{margin-top:10px;display:flex;align-items:center;gap:8px;background:#0f1722;color:#e6edf3;border-radius:9px;padding:9px 12px;font-family:ui-monospace,Menlo,monospace;font-size:.86rem;}
+  .coach .cmd code{background:none;color:inherit;padding:0;flex:1;}
+
+  .recent{margin-top:18px;}
+  .recent h3{font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);margin-bottom:8px;}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;}
+  .chip{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:6px 12px;font-size:.84rem;display:flex;align-items:center;gap:7px;cursor:pointer;box-shadow:var(--shadow);}
+  .chip:hover{border-color:var(--solid);}
+  .chip .d{width:7px;height:7px;border-radius:50%;} .chip .d.ok{background:var(--ok);} .chip .d.warn{background:var(--warn);}
+  .chip .x{color:var(--ink-3);font-weight:700;margin-left:2px;}
+
+  footer{margin-top:30px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:center;color:var(--ink-3);font-size:.82rem;}
+  footer input{width:200px;padding:5px 9px;font-size:.82rem;}
+  .muted{color:var(--ink-3);font-size:.85rem;}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <h1>Bridges <span class="arr">⚡⇄◆</span></h1>
+    <p>Connect your <b style="color:var(--nostr)">Nostr</b> identity and your <b style="color:var(--solid)">Solid</b> storage — from both sides.</p>
+  </header>
+
+  <section class="bridge">
+    <!-- NOSTR side -->
+    <div class="node nostr">
+      <div class="node-h"><span class="ico">⚡</span><b>Nostr</b><small>identity</small></div>
+      <div class="node-b" id="nostrBody"></div>
+    </div>
+
+    <div class="span">
+      <span class="badge" id="bridgeBadge">not connected</span>
+      <div class="line" id="bridgeLine"></div>
+    </div>
+
+    <!-- SOLID side -->
+    <div class="node solid">
+      <div class="node-h"><span class="ico">◆</span><b>Solid</b><small>storage</small></div>
+      <div class="node-b" id="solidBody"></div>
+    </div>
+  </section>
+
+  <section class="coach" id="coach"></section>
+  <section class="recent" id="recentSec" style="display:none"><h3>Recent</h3><div class="chips" id="chips"></div></section>
+
+  <footer>
+    <label>resolver <input type="text" id="resolverInput" /></label>
+    <span>·</span><span>bridges v0.0.1</span><span>·</span>
+    <a href="https://github.com/solid-apps" target="_blank">solid-apps</a>
+  </footer>
+</main>
+
+<script>
+const LS='bridges.v0';
+const $=id=>document.getElementById(id);
+const esc=s=>(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const short=h=>!h?'':h.length>16?h.slice(0,10)+'…'+h.slice(-6):h;
+function podRoot(webId){ try{ const u=new URL(webId); return u.origin+'/'; }catch{ return null; } }
+
+/* --- tiny bech32 npub → hex decoder --- */
+const B32='qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+function npubToHex(s){
+  s=s.trim().toLowerCase(); const p=s.lastIndexOf('1'); if(s.slice(0,p)!=='npub'||p<1) return null;
+  const words=[]; for(const c of s.slice(p+1)){ const v=B32.indexOf(c); if(v<0)return null; words.push(v); }
+  let acc=0,bits=0; const out=[];
+  for(const w of words.slice(0,-6)){ acc=(acc<<5)|w; bits+=5; while(bits>=8){ bits-=8; out.push((acc>>bits)&0xff); } }
+  if(out.length!==32) return null;
+  return out.map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+function toPubkey(input){
+  input=input.trim();
+  if(/^[0-9a-f]{64}$/i.test(input)) return input.toLowerCase();
+  if(input.startsWith('npub')) return npubToHex(input);
+  if(input.startsWith('did:nostr:')) return toPubkey(input.slice(10));
+  return null;
+}
+
+/* --- memory --- */
+function mem(){ try{ return JSON.parse(localStorage.getItem(LS))||{}; }catch{ return {}; } }
+function saveMem(m){ localStorage.setItem(LS, JSON.stringify(m)); }
+function remember(entry){
+  const m=mem(); m.recent=(m.recent||[]).filter(e=>e.pubkey!==entry.pubkey); m.recent.unshift(entry);
+  m.recent=m.recent.slice(0,6); m.resolver=state.resolver; saveMem(m); renderRecent();
+}
+
+/* --- state --- */
+const defaultResolver = location.protocol.startsWith('http') && !/^file/.test(location.protocol)
+  ? location.origin : 'https://nostr.social';
+const state={ pubkey:null, doc:null, webId:null, pod:null, resolver: mem().resolver || defaultResolver, linkedKey:null };
+
+/* --- NOSTR → SOLID : resolve storage --- */
+async function resolveStorage(pubkey){
+  state.pubkey=pubkey; state.doc=null; state.webId=null; state.pod=null;
+  renderNostr('resolving'); renderBridge(); coach();
+  const resolver=state.resolver.replace(/\/+$/,'');
+  let res;
+  try{ res=await fetch(`${resolver}/.well-known/did/nostr/${pubkey}.json`, {headers:{Accept:'application/json'}}); }
+  catch(e){ renderNostr('error', `Couldn't reach ${resolver}: ${e.message}`); coach(); return; }
+  if(res.status===404){ renderNostr('noaccount'); renderBridge(); coach(); return; }
+  if(!res.ok){ renderNostr('error', `Resolver returned ${res.status}`); coach(); return; }
+  let doc; try{ doc=await res.json(); }catch{ renderNostr('error','Resolver returned invalid JSON'); coach(); return; }
+  state.doc=doc;
+  const aka=[].concat(doc.alsoKnownAs||[]).filter(Boolean);
+  if(aka.length){ state.webId=aka[0]; state.pod=podRoot(aka[0]); renderNostr('storage'); }
+  else { renderNostr('nostorage'); }
+  renderBridge(); coach();
+  remember({pubkey, webId:state.webId, pod:state.pod, ts:Date.now()});
+}
+async function connectNostr(){
+  if(!window.nostr){ renderNostr('nosigner'); coach(); return; }
+  let pk; try{ pk=(await window.nostr.getPublicKey()).toLowerCase(); }
+  catch(e){ renderNostr('error','Signer declined: '+e.message); coach(); return; }
+  resolveStorage(pk);
+}
+function pasteNostr(){
+  const pk=toPubkey($('nKeyInput').value||'');
+  if(!pk){ $('nKeyMsg').textContent='Not a valid npub / hex pubkey'; return; }
+  resolveStorage(pk);
+}
+
+/* --- SOLID → NOSTR : find linked key --- */
+async function findFromSolid(){
+  const input=($('sInput').value||'').trim(); if(!input) return;
+  state.linkedKey=null; renderSolid('finding');
+  let url=input; if(!/^https?:/.test(url)) url='https://'+url;
+  let text;
+  try{ const r=await fetch(url,{headers:{Accept:'text/turtle, application/ld+json;q=0.9, */*;q=0.8'}}); if(!r.ok){ renderSolid('error',`${r.status} fetching profile`); return; } text=await r.text(); }
+  catch(e){ renderSolid('error',e.message); return; }
+  // best-effort: look for a did:nostr or a bare 64-hex pubkey / npub in the profile
+  const did=text.match(/did:nostr:([0-9a-f]{64})/i);
+  const np=text.match(/\bnpub1[0-9a-z]{20,}\b/i);
+  const hex=did?did[1].toLowerCase():(np?npubToHex(np[0]):null);
+  if(hex){ state.linkedKey=hex; renderSolid('found', url); coach(); if(!state.pubkey) resolveStorage(hex); }
+  else { renderSolid('notlinked', url); coach(); }
+}
+
+/* --- renderers --- */
+function renderNostr(stage, detail){
+  const b=$('nostrBody');
+  if(stage==='idle'){ b.innerHTML=`
+    <button class="btn nostr" onclick="connectNostr()">⚡ Sign in with Nostr</button>
+    <div class="or">or paste a key</div>
+    <input type="text" id="nKeyInput" placeholder="npub1… or hex pubkey" />
+    <button class="btn ghost sm" onclick="pasteNostr()">Resolve</button>
+    <div class="muted" id="nKeyMsg"></div>`; return; }
+  const pk=state.pubkey;
+  const head=`<div class="result"><div class="k">pubkey</div><div class="v">${esc(short(pk))}</div></div>`;
+  if(stage==='resolving'){ b.innerHTML=head+`<div class="muted">Resolving storage via ${esc(state.resolver)}…</div>`; return; }
+  if(stage==='nosigner'){ b.innerHTML=`<div class="result err">No Nostr signer found. Install a NIP-07 extension (Alby, nos2x) or paste a key.</div>`+renderNostr.idleInputs(); return; }
+  if(stage==='error'){ b.innerHTML=head+`<div class="result err">${esc(detail||'error')}</div>`+resetBtn(); return; }
+  if(stage==='noaccount'){ b.innerHTML=head+`<div class="result warn"><b>Identity valid</b>, but no account at this resolver. Try another resolver, or add storage.</div>`+resetBtn(); return; }
+  if(stage==='nostorage'){ b.innerHTML=head+`<div class="result warn"><span class="pill warn">no storage</span> Identity resolves, but no <code>alsoKnownAs</code> pod is linked.</div>`+resetBtn(); return; }
+  if(stage==='storage'){ b.innerHTML=head+`<div class="result ok"><span class="pill ok">has storage</span></div>
+    <div class="result"><div class="k">pod</div><div class="v"><a href="${esc(state.pod)}" target="_blank">${esc(state.pod)}</a></div></div>`+resetBtn(); return; }
+}
+renderNostr.idleInputs=()=>`<input type="text" id="nKeyInput" placeholder="npub1… or hex" /><button class="btn ghost sm" onclick="pasteNostr()">Resolve</button><div class="muted" id="nKeyMsg"></div>`;
+function resetBtn(){ return `<button class="btn ghost sm" onclick="renderNostr('idle');renderBridge()" style="margin-top:auto">↺ start over</button>`; }
+
+function renderSolid(stage, url){
+  const b=$('solidBody');
+  if(stage==='idle'){ b.innerHTML=`
+    <input type="text" id="sInput" placeholder="your WebID or pod URL" />
+    <button class="btn solid sm" onclick="findFromSolid()">Find linked Nostr key</button>
+    <div class="muted">Have a pod but no key linked? This finds it from the other side.</div>`; return; }
+  if(stage==='finding'){ b.innerHTML=`<div class="muted">Reading profile…</div>`; return; }
+  if(stage==='error'){ b.innerHTML=`<div class="result err">${esc(url||'error')}</div>`+solidReset(); return; }
+  if(stage==='found'){ b.innerHTML=`<div class="result"><div class="k">profile</div><div class="v">${esc(url)}</div></div>
+    <div class="result ok"><span class="pill ok">linked key</span><div class="v">${esc(short(state.linkedKey))}</div></div>`+solidReset(); return; }
+  if(stage==='notlinked'){ b.innerHTML=`<div class="result"><div class="k">profile</div><div class="v">${esc(url)}</div></div>
+    <div class="result warn"><span class="pill warn">no key</span> No did:nostr / npub found in this profile.</div>`+solidReset(); return; }
+}
+function solidReset(){ return `<button class="btn ghost sm" onclick="renderSolid('idle')" style="margin-top:auto">↺ start over</button>`; }
+
+function renderBridge(){
+  const line=$('bridgeLine'), badge=$('bridgeBadge');
+  const linked = state.pubkey && state.pod;
+  line.className='line'+(linked?' live':'');
+  if(linked){ badge.className='badge ok'; badge.textContent='✓ bridged'; }
+  else if(state.pubkey){ badge.className='badge warn'; badge.textContent='needs storage'; }
+  else { badge.className='badge'; badge.textContent='not connected'; }
+}
+
+/* --- coaching --- */
+function coach(){
+  const c=$('coach');
+  const haveKey=!!state.pubkey, haveStorage=!!state.pod;
+  const step=(n,label,st)=>`<div class="step ${st}"><span class="dot">${st==='done'?'✓':n}</span><div>${label}</div></div>`;
+  let msg, s1='now',s2='',s3='';
+  if(!haveKey){ msg='Start by signing in with your Nostr key (or paste one). We’ll look up whether it already has Solid storage.'; }
+  else if(haveStorage){ msg='🎉 <b>Bridged.</b> Your Nostr identity is linked to a Solid pod — apps can now find your storage from your key alone.'; s1='done';s2='done';s3='done'; }
+  else { msg='Your Nostr identity resolves, but <b>no storage is linked yet</b>. Add a pod, then link it to your key (add it to <code>alsoKnownAs</code> in your did:nostr document).'; s1='done';s2='now'; }
+  let cmd='';
+  if(haveKey && !haveStorage){ cmd=`
+    <div class="cmd"><code>npx jspod</code><button class="btn ghost sm" onclick="copyCmd(this,'npx jspod')">copy</button></div>
+    <div class="muted" style="margin-top:8px">Self-host in 60s with <a href="https://jspod.org" target="_blank">jspod</a>, or get a hosted pod at
+      <a href="https://nostr.social" target="_blank">nostr.social</a> / <a href="https://solid.social" target="_blank">solid.social</a>.
+      Then <button class="btn ghost sm" onclick="resolveStorage(state.pubkey)">re-check</button></div>`; }
+  c.innerHTML=`<h3>Guide</h3><div class="msg">${msg}</div>
+    <div class="steps">
+      ${step(1,'Sign in with your Nostr key',s1)}
+      ${step(2,'Find or add your Solid storage',s2)}
+      ${step(3,'Linked — your key points to your pod',haveStorage?'done':'')}
+    </div>${cmd}`;
+}
+function copyCmd(btn,txt){ navigator.clipboard?.writeText(txt); const t=btn.textContent; btn.textContent='copied'; setTimeout(()=>btn.textContent=t,1200); }
+
+/* --- recent --- */
+function renderRecent(){
+  const m=mem(); const r=m.recent||[];
+  if(!r.length){ $('recentSec').style.display='none'; return; }
+  $('recentSec').style.display='';
+  $('chips').innerHTML=r.map(e=>`<span class="chip" onclick="resolveStorage('${e.pubkey}')">
+    <span class="d ${e.pod?'ok':'warn'}"></span>${esc(short(e.pubkey))}<span class="x" onclick="event.stopPropagation();forget('${e.pubkey}')">×</span></span>`).join('');
+}
+function forget(pk){ const m=mem(); m.recent=(m.recent||[]).filter(e=>e.pubkey!==pk); saveMem(m); renderRecent(); }
+
+/* --- init --- */
+window.connectNostr=connectNostr; window.pasteNostr=pasteNostr; window.findFromSolid=findFromSolid;
+window.renderNostr=renderNostr; window.renderBridge=renderBridge; window.resolveStorage=resolveStorage;
+window.renderSolid=renderSolid; window.copyCmd=copyCmd; window.forget=forget;
+$('resolverInput').value=state.resolver;
+$('resolverInput').onchange=e=>{ state.resolver=e.target.value.trim()||defaultResolver; const m=mem();m.resolver=state.resolver;saveMem(m); };
+renderNostr('idle'); renderSolid('idle'); renderBridge(); coach(); renderRecent();
+</script>
+</body>
+</html>
