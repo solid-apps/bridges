@@ -138,7 +138,8 @@
 
   <footer>
     <label>resolver <input type="text" id="resolverInput" /></label>
-    <span>·</span><span>bridges v0.0.1</span><span>·</span>
+    <label>relays <input type="text" id="relaysInput" style="width:240px" /></label>
+    <span>bridges v0.0.1</span><span>·</span>
     <a href="https://github.com/solid-apps" target="_blank">solid-apps</a>
   </footer>
 </main>
@@ -182,7 +183,9 @@ function remember(entry){
 // hosts (e.g. GitHub Pages) that origin is NOT a did:nostr resolver, so fall back to nostr.social.
 const isLocalPod = location.protocol.startsWith('http') && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
 const defaultResolver = isLocalPod ? location.origin : 'https://nostr.social';
-const state={ pubkey:null, doc:null, webId:null, pod:null, resolver: mem().resolver || defaultResolver, linkedKey:null, name:'' };
+const DEFAULT_RELAYS = ['wss://relay.damus.io','wss://nos.lol','wss://relay.nostr.band'];
+const defaultRelays = (isLocalPod ? [location.origin.replace(/^http/,'ws')+'/relay'] : []).concat(DEFAULT_RELAYS);
+const state={ pubkey:null, doc:null, webId:null, pod:null, resolver: mem().resolver || defaultResolver, linkedKey:null, name:'', relays:[] };
 
 /* --- NOSTR → SOLID : resolve storage --- */
 async function resolveStorage(pubkey){
@@ -245,6 +248,46 @@ function downloadKey(pub,priv){
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([body],{type:'text/plain'})); a.download='nostr-key-backup.txt'; a.click();
 }
 
+/* --- publish profile (kind 0) to relays --- */
+function canSign(){ return !!((mem().key&&mem().key.priv)||(window.nostr&&window.nostr.signEvent)); }
+function pubBtn(){ return canSign()?`<button class="btn nostr sm" onclick="publishProfile()" style="margin-top:8px">📡 Publish profile to relays</button><div class="muted" id="pubStatus"></div>`:''; }
+function setPubStatus(t){ const e=$('pubStatus'); if(e) e.textContent=t; }
+async function signEvent(evt){
+  const k=mem().key;
+  if(k&&k.priv){
+    const M=await import('https://esm.sh/@noble/secp256k1@1.7.1'); const secp=M.schnorr?M:(M.default||M);
+    evt.pubkey=k.pub;
+    const serial=JSON.stringify([0,evt.pubkey,evt.created_at,evt.kind,evt.tags,evt.content]);
+    const hash=new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(serial)));
+    evt.id=secp.utils.bytesToHex(hash);
+    evt.sig=secp.utils.bytesToHex(await secp.schnorr.sign(evt.id, k.priv));
+    return evt;
+  }
+  if(window.nostr&&window.nostr.signEvent) return await window.nostr.signEvent(evt);
+  throw new Error('no signer available');
+}
+async function publishProfile(){
+  if(!state.pubkey) return;
+  setPubStatus('Signing…');
+  const content={}; if(state.name) content.name=state.name; if(state.pod) content.website=state.pod;
+  let evt={kind:0, created_at:Math.floor(Date.now()/1000), tags:[], content:JSON.stringify(content), pubkey:state.pubkey};
+  try{ evt=await signEvent(evt); }catch(e){ setPubStatus('Sign failed: '+e.message); return; }
+  publishEvent(evt);
+}
+function publishEvent(evt){
+  const relays=(state.relays&&state.relays.length)?state.relays:defaultRelays;
+  let ok=0,done=0; setPubStatus('Publishing to '+relays.length+' relays…');
+  relays.forEach(url=>{
+    let ws, settled=false;
+    const tally=good=>{ if(settled)return; settled=true; clearTimeout(t); if(good)ok++; done++; if(done>=relays.length) setPubStatus('Published to '+ok+'/'+relays.length+' relays'+(ok?' ✓':' — none accepted')); };
+    const t=setTimeout(()=>{ try{ws&&ws.close();}catch{} tally(false); }, 6000);
+    try{ ws=new WebSocket(url); }catch{ tally(false); return; }
+    ws.onopen=()=>{ try{ ws.send(JSON.stringify(['EVENT',evt])); }catch{ tally(false); } };
+    ws.onmessage=m=>{ try{ const d=JSON.parse(m.data); if(d[0]==='OK'&&d[1]===evt.id){ tally(!!d[2]); try{ws.close();}catch{} } }catch{} };
+    ws.onerror=()=>{ tally(false); try{ws.close();}catch{} };
+  });
+}
+
 /* --- SOLID → NOSTR : find linked key --- */
 async function findFromSolid(){
   const input=($('sInput').value||'').trim(); if(!input) return;
@@ -278,10 +321,10 @@ function renderNostr(stage, detail){
   if(stage==='resolving'){ b.innerHTML=head+`<div class="muted">Resolving storage via ${esc(state.resolver)}…</div>`; return; }
   if(stage==='nosigner'){ b.innerHTML=`<div class="result err">No Nostr signer found. Install a NIP-07 extension (Alby, nos2x) or paste a key.</div>`+renderNostr.idleInputs(); return; }
   if(stage==='error'){ b.innerHTML=head+`<div class="result err">${esc(detail||'error')}</div>`+resetBtn(); return; }
-  if(stage==='noaccount'){ b.innerHTML=head+`<div class="result warn"><b>Identity valid</b>, but no account at this resolver. Try another resolver, or add storage.</div>`+resetBtn(); return; }
-  if(stage==='nostorage'){ b.innerHTML=head+`<div class="result warn"><span class="pill warn">no storage</span> Identity resolves, but no <code>alsoKnownAs</code> pod is linked.</div>`+resetBtn(); return; }
+  if(stage==='noaccount'){ b.innerHTML=head+`<div class="result warn"><b>Identity valid</b>, but no account at this resolver. Try another resolver, or add storage.</div>`+pubBtn()+resetBtn(); return; }
+  if(stage==='nostorage'){ b.innerHTML=head+`<div class="result warn"><span class="pill warn">no storage</span> Identity resolves, but no <code>alsoKnownAs</code> pod is linked.</div>`+pubBtn()+resetBtn(); return; }
   if(stage==='storage'){ b.innerHTML=head+`<div class="result ok"><span class="pill ok">has storage</span></div>
-    <div class="result"><div class="k">pod</div><div class="v"><a href="${esc(state.pod)}" target="_blank">${esc(state.pod)}</a></div></div>`+resetBtn(); return; }
+    <div class="result"><div class="k">pod</div><div class="v"><a href="${esc(state.pod)}" target="_blank">${esc(state.pod)}</a></div></div>`+pubBtn()+resetBtn(); return; }
 }
 renderNostr.idleInputs=()=>`<input type="text" id="nKeyInput" placeholder="hex pubkey (or npub)" /><button class="btn ghost sm" onclick="pasteNostr()">Resolve</button><div class="muted" id="nKeyMsg"></div>`;
 function resetBtn(){
@@ -364,8 +407,12 @@ window.renderNostr=renderNostr; window.renderBridge=renderBridge; window.resolve
 window.renderSolid=renderSolid; window.copyCmd=copyCmd; window.forget=forget;
 window.generateKey=generateKey; window.copyText=copyText; window.downloadKey=downloadKey;
 window.forgetKey=forgetKey; window.nostrReset=nostrReset; window.state=state; window.mem=mem;
+window.publishProfile=publishProfile;
 $('resolverInput').value=state.resolver;
 $('resolverInput').onchange=e=>{ state.resolver=e.target.value.trim()||defaultResolver; const m=mem();m.resolver=state.resolver;saveMem(m); };
+state.relays=(mem().relays&&mem().relays.length)?mem().relays:defaultRelays;
+$('relaysInput').value=state.relays.join(' ');
+$('relaysInput').onchange=e=>{ state.relays=e.target.value.split(/[\s,]+/).filter(Boolean); const m=mem(); m.relays=state.relays; saveMem(m); };
 /* name: from ?name= query string, else remembered */
 const qsName=new URLSearchParams(location.search).get('name');
 state.name=(qsName||mem().name||'').trim();
