@@ -166,14 +166,7 @@ function toPubkey(input){
   if(input.startsWith('did:nostr:')) return toPubkey(input.slice(10));
   return null;
 }
-/* --- bech32 encode (for npub/nsec) --- */
-function b32Polymod(v){ const G=[0x3b6a57b2,0x26508e6d,0x1ea119fa,0x3d4233dd,0x2a1462b3]; let c=1; for(const x of v){ const b=c>>25; c=((c&0x1ffffff)<<5)^x; for(let i=0;i<5;i++) if((b>>i)&1) c^=G[i]; } return c; }
-function b32Hrp(h){ const o=[]; for(let i=0;i<h.length;i++) o.push(h.charCodeAt(i)>>5); o.push(0); for(let i=0;i<h.length;i++) o.push(h.charCodeAt(i)&31); return o; }
-function b32Encode(hrp,data){ const chk=b32Polymod(b32Hrp(hrp).concat(data).concat([0,0,0,0,0,0]))^1; const cs=[]; for(let i=0;i<6;i++) cs.push((chk>>5*(5-i))&31); let s=hrp+'1'; for(const d of data.concat(cs)) s+=B32[d]; return s; }
-function bytesToWords(bytes){ let acc=0,bits=0; const o=[]; for(const b of bytes){ acc=(acc<<8)|b; bits+=8; while(bits>=5){ bits-=5; o.push((acc>>bits)&31); } } if(bits) o.push((acc<<(5-bits))&31); return o; }
-function hexToBytes(h){ const a=[]; for(let i=0;i<h.length;i+=2) a.push(parseInt(h.slice(i,i+2),16)); return a; }
-function toNpub(hex){ return b32Encode('npub', bytesToWords(hexToBytes(hex))); }
-function toNsec(hex){ return b32Encode('nsec', bytesToWords(hexToBytes(hex))); }
+/* hex-native: did:nostr uses 64-char hex; no bech32 nsec/npub encoding (npub decode above is only to tolerate pasted npubs) */
 
 /* --- memory --- */
 function mem(){ try{ return JSON.parse(localStorage.getItem(LS))||{}; }catch{ return {}; } }
@@ -228,23 +221,23 @@ async function generateKey(){
   const privHex=secp.utils.bytesToHex(priv);
   const pubHex=secp.utils.bytesToHex(secp.schnorr.getPublicKey(priv));
   const m=mem(); m.key={pub:pubHex, priv:privHex}; saveMem(m);  // local self-custody (guest key)
-  showNewKey(toNpub(pubHex), toNsec(privHex), pubHex);
+  showNewKey(pubHex, privHex);
 }
-function showNewKey(npub, nsec, pubHex){
+function showNewKey(pubHex, privHex){
   $('nostrBody').innerHTML=`
     <div class="result warn"><b>⚠ Back this up now.</b> Your secret key is the <b>only</b> copy — no reset, no recovery. Anyone who has it controls your identity.</div>
-    <div class="result"><div class="k">public · npub (shareable)</div><div class="v">${esc(npub)}</div>
-      <button class="btn ghost sm" onclick="copyText(this,'${npub}')" style="margin-top:6px">copy npub</button></div>
-    <div class="result"><div class="k">secret · nsec (keep private)</div><div class="v">${esc(nsec)}</div>
+    <div class="result"><div class="k">public key · 64-hex (your did:nostr)</div><div class="v">${esc(pubHex)}</div>
+      <button class="btn ghost sm" onclick="copyText(this,'${pubHex}')" style="margin-top:6px">copy public</button></div>
+    <div class="result"><div class="k">secret key · 64-hex (keep private)</div><div class="v">${esc(privHex)}</div>
       <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
-        <button class="btn ghost sm" onclick="copyText(this,'${nsec}')">copy nsec</button>
-        <button class="btn ghost sm" onclick="downloadKey('${npub}','${nsec}')">download backup</button></div></div>
+        <button class="btn ghost sm" onclick="copyText(this,'${privHex}')">copy secret</button>
+        <button class="btn ghost sm" onclick="downloadKey('${pubHex}','${privHex}')">download backup</button></div></div>
     <button class="btn nostr" onclick="resolveStorage('${pubHex}')" style="margin-top:auto">I’ve saved it — continue</button>
-    <div class="muted">For real safety, import this nsec into a signer (Alby, nos2x, nsec.app).</div>`;
+    <div class="muted">For real safety, keep your secret key in a signer (Alby, nos2x).</div>`;
 }
 function copyText(btn,txt){ navigator.clipboard?.writeText(txt); const t=btn.textContent; btn.textContent='copied ✓'; setTimeout(()=>btn.textContent=t,1200); }
-function downloadKey(npub,nsec){
-  const body=`Nostr identity backup\n\nnpub (public):  ${npub}\nnsec (SECRET):  ${nsec}\n\nAnyone with the nsec controls this identity. There is no recovery — store it safely.`;
+function downloadKey(pub,priv){
+  const body=`Nostr identity backup (64-char hex)\n\npublic key:  ${pub}\nsecret key:  ${priv}\n\nAnyone with the secret key controls this identity. There is no recovery — store it safely.`;
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([body],{type:'text/plain'})); a.download='nostr-key-backup.txt'; a.click();
 }
 
@@ -270,7 +263,7 @@ function renderNostr(stage, detail){
   if(stage==='idle'){ b.innerHTML=`
     <button class="btn nostr" onclick="connectNostr()">⚡ Sign in with Nostr</button>
     <div class="or">or paste a key</div>
-    <input type="text" id="nKeyInput" placeholder="npub1… or hex pubkey" />
+    <input type="text" id="nKeyInput" placeholder="hex pubkey (or npub)" />
     <button class="btn ghost sm" onclick="pasteNostr()">Resolve</button>
     <div class="muted" id="nKeyMsg"></div>
     <div class="or">no key yet?</div>
@@ -285,7 +278,7 @@ function renderNostr(stage, detail){
   if(stage==='storage'){ b.innerHTML=head+`<div class="result ok"><span class="pill ok">has storage</span></div>
     <div class="result"><div class="k">pod</div><div class="v"><a href="${esc(state.pod)}" target="_blank">${esc(state.pod)}</a></div></div>`+resetBtn(); return; }
 }
-renderNostr.idleInputs=()=>`<input type="text" id="nKeyInput" placeholder="npub1… or hex" /><button class="btn ghost sm" onclick="pasteNostr()">Resolve</button><div class="muted" id="nKeyMsg"></div>`;
+renderNostr.idleInputs=()=>`<input type="text" id="nKeyInput" placeholder="hex pubkey (or npub)" /><button class="btn ghost sm" onclick="pasteNostr()">Resolve</button><div class="muted" id="nKeyMsg"></div>`;
 function resetBtn(){ return `<button class="btn ghost sm" onclick="renderNostr('idle');renderBridge()" style="margin-top:auto">↺ start over</button>`; }
 
 function renderSolid(stage, url){
@@ -323,10 +316,9 @@ function coach(){
   else { msg='Your Nostr identity resolves, but <b>no storage is linked yet</b>. Add a pod, then link it to your key (add it to <code>alsoKnownAs</code> in your did:nostr document).'; s1='done';s2='now'; }
   let cmd='';
   if(haveKey && !haveStorage){ cmd=`
+    <div class="muted" style="margin:10px 0 6px">Get a pod — recommended: <a href="https://solidweb.app/idp/register" target="_blank"><b>solidweb.app</b></a> (free hosted, ~1&nbsp;min). Or self-host:</div>
     <div class="cmd"><code>npx jspod</code><button class="btn ghost sm" onclick="copyCmd(this,'npx jspod')">copy</button></div>
-    <div class="muted" style="margin-top:8px">Self-host in 60s with <a href="https://jspod.org" target="_blank">jspod</a>, or get a hosted pod at
-      <a href="https://nostr.social" target="_blank">nostr.social</a> / <a href="https://solid.social" target="_blank">solid.social</a>.
-      Then <button class="btn ghost sm" onclick="resolveStorage(state.pubkey)">re-check</button></div>`; }
+    <div class="muted" style="margin-top:8px">Linked a pod already? <button class="btn ghost sm" onclick="resolveStorage(state.pubkey)">re-check</button></div>`; }
   c.innerHTML=`<h3>Guide</h3><div class="msg">${msg}</div>
     <div class="steps">
       ${step(1,'Sign in with your Nostr key',s1)}
