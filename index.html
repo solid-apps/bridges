@@ -265,7 +265,7 @@ async function connectNostr(){
 }
 function pasteNostr(){
   const pk=toPubkey($('nKeyInput').value||'');
-  if(!pk){ $('nKeyMsg').textContent='Not a valid npub / hex pubkey'; return; }
+  if(!pk){ const e=$('nKeyMsg'); if(e){ e.textContent='Not a valid public key — expected hex or npub…'; e.style.color='var(--err)'; } return; }
   resolveStorage(pk);
 }
 
@@ -302,16 +302,18 @@ function downloadKey(pub,priv){
 
 /* --- sign in with an existing private key (64-hex or nsec) --- */
 async function importKey(){
-  const setMsg=t=>{ const e=$('nKeyMsg'); if(e) e.textContent=t; };
-  const raw=(($('nSkInput')||{}).value||'').trim();
-  let priv = /^[0-9a-f]{64}$/i.test(raw) ? raw.toLowerCase() : (raw.toLowerCase().startsWith('nsec') ? nsecToHex(raw) : null);
-  if(!priv){ setMsg('Enter a 64-hex private key or an nsec…'); return; }
+  const setMsg=(t,err)=>{ const e=$('nKeyMsg'); if(e){ e.textContent=t; e.style.color=err?'var(--err)':'var(--ink-3)'; } };
+  let raw=(($('nSkInput')||{}).value||'').trim().replace(/^nostr:/i,'');
+  if(!raw){ setMsg('Enter your private key (64-hex or nsec) to sign in.', true); return; }
+  if(/^npub1/i.test(raw)){ setMsg('That’s a public key (npub). Paste it under “look up a public key”, or use your private nsec/hex here to sign in.', true); return; }
+  let priv = /^[0-9a-f]{64}$/i.test(raw) ? raw.toLowerCase() : (/^nsec1/i.test(raw) ? nsecToHex(raw) : null);
+  if(!priv){ setMsg('Not a valid private key — expected 64 hex characters or an nsec…', true); return; }
   if(mem().key && mem().key.priv && mem().key.priv!==priv && !confirm('Replace your current saved key with this one?')) return;
   $('nostrBody').innerHTML='<div class="muted">Signing in…</div>';
   let secp; try{ const M=await import('https://esm.sh/@noble/secp256k1@1.7.1'); secp=M.schnorr?M:(M.default||M); }
   catch(e){ $('nostrBody').innerHTML='<div class="result err">Couldn’t load the crypto library: '+esc(e.message)+'</div>'+resetBtn(); return; }
   let pub; try{ pub=secp.utils.bytesToHex(secp.schnorr.getPublicKey(priv)); }
-  catch(e){ renderNostr('idle'); setMsg('That doesn’t look like a valid private key.'); return; }
+  catch(e){ renderNostr('idle'); setMsg('That doesn’t look like a valid private key.', true); return; }
   const m=mem(); m.key={pub, priv}; saveMem(m);   // self-custody signing key
   resolveStorage(pub);
 }
@@ -417,11 +419,11 @@ function renderNostr(stage, detail){
   if(stage==='idle'){ b.innerHTML=`
     <button class="btn nostr" onclick="connectNostr()">⚡ Sign in with extension</button>
     <div class="or">or with a private key</div>
-    <input type="text" id="nSkInput" placeholder="private key — 64-hex or nsec…" />
+    <input type="text" id="nSkInput" placeholder="private key — 64-hex or nsec…" onkeydown="if(event.key==='Enter')importKey()" />
     <button class="btn ghost sm" onclick="importKey()">Sign in</button>
     <div class="muted" id="nKeyMsg"></div>
     <div class="or">just look up a public key</div>
-    <input type="text" id="nKeyInput" placeholder="public key — hex or npub…" />
+    <input type="text" id="nKeyInput" placeholder="public key — hex or npub…" onkeydown="if(event.key==='Enter')pasteNostr()" />
     <button class="btn ghost sm" onclick="pasteNostr()">Resolve</button>
     <div class="or">no key yet?</div>
     <button class="btn ghost" onclick="generateKey()">✨ Generate a new key</button>`; return; }
