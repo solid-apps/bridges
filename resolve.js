@@ -40,5 +40,23 @@
     return { webId, pod: podRoot(webId), verified, doc };
   }
 
-  window.Bridges = { keysInProfile, verifyWebId, resolvePodFromKey, podRoot };
+  // best-effort display name from a WebID profile (foaf:name / vcard:fn / schema:name)
+  async function profileName(webId) {
+    try {
+      const r = await fetch(webId, { headers: { Accept: 'text/turtle, application/ld+json;q=0.9, */*;q=0.8' } });
+      if (!r.ok) return null;
+      const t = await r.text();
+      const pats = [
+        /"(?:foaf:)?name"\s*:\s*"([^"]{1,80})"/i,
+        /"vcard:fn"\s*:\s*"([^"]{1,80})"/i,
+        /"schema:name"\s*:\s*"([^"]{1,80})"/i,
+        /\bfoaf:name\s+"([^"]{1,80})"/i,
+        /\bvcard:fn\s+"([^"]{1,80})"/i
+      ];
+      for (const p of pats) { const m = t.match(p); if (m && m[1].trim()) return m[1].trim(); }
+      return null;
+    } catch { return null; }
+  }
+
+  window.Bridges = { keysInProfile, verifyWebId, resolvePodFromKey, podRoot, profileName };
 })();
