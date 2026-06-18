@@ -3,6 +3,7 @@
  * No build step, no deps. Same-origin load (e.g. ../bridges/resolve.js). */
 (function () {
   function podRoot(webId) { try { return new URL(webId).origin + '/'; } catch { return null; } }
+  async function fetchT(url, opts, ms) { const c = new AbortController(); const t = setTimeout(() => c.abort(), ms || 5000); try { return await fetch(url, Object.assign({ signal: c.signal }, opts || {})); } finally { clearTimeout(t); } }
 
   // pubkeys a profile (turtle/json-ld text) declares: fe70102… Multikey + did:nostr forms
   function keysInProfile(text) {
@@ -14,7 +15,7 @@
   // Does the WebID profile actually list this pubkey? (the backlink)
   async function verifyWebId(webId, pubkey) {
     try {
-      const r = await fetch(webId, { headers: { Accept: 'text/turtle, application/ld+json;q=0.9, */*;q=0.8' } });
+      const r = await fetchT(webId, { headers: { Accept: 'text/turtle, application/ld+json;q=0.9, */*;q=0.8' } }, 5000);
       if (!r.ok) return { ok: false, readable: false, keys: [] };
       const t = (await r.text()).toLowerCase();
       const keys = keysInProfile(t);
@@ -30,7 +31,7 @@
     const resolver = (opts.resolver || 'https://nostr.social').replace(/\/+$/, '');
     let doc = null;
     try {
-      const r = await fetch(resolver + '/.well-known/did/nostr/' + pubkey + '.json', { headers: { Accept: 'application/json' } });
+      const r = await fetchT(resolver + '/.well-known/did/nostr/' + pubkey + '.json', { headers: { Accept: 'application/json' } }, opts.timeout || 5000);
       if (r.ok) doc = await r.json();
     } catch {}
     const webId = doc ? [].concat(doc.alsoKnownAs || []).filter(Boolean)[0] : null;
@@ -66,7 +67,7 @@
     const resolver = (opts.resolver || 'https://nostr.social').replace(/\/+$/, '');
     let doc = null;
     try {
-      const r = await fetch(resolver + '/.well-known/did/nostr/' + pubkey + '.json', { headers: { Accept: 'application/json' } });
+      const r = await fetchT(resolver + '/.well-known/did/nostr/' + pubkey + '.json', { headers: { Accept: 'application/json' } }, opts.timeout || 5000);
       if (r.ok) doc = await r.json();
     } catch {}
     if (!doc) return { pubkey, name: null, picture: null, about: null, website: null, pod: null, bridged: false, follows: [], doc: null };
