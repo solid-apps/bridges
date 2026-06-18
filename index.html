@@ -191,7 +191,7 @@ const STATIC_HOSTS = /(?:^|\.)(?:github\.io|pages\.dev|netlify\.app|vercel\.app)
 const servedFromPod = location.protocol.startsWith('http') && !STATIC_HOSTS.test(location.hostname);
 // served from a pod → use that origin; on static hosts (github.io) fall back to a sensible default
 const defaultStorage = (servedFromPod ? location.origin : 'http://localhost:5444') + '/profile/card.jsonld#me';
-const state={ pubkey:null, doc:null, webId:null, pod:null, resolver: mem().resolver || defaultResolver, linkedKey:null, name:'', storage:'', relays:[], candidate:null, verified:false, unconfReason:'' };
+const state={ pubkey:null, doc:null, webId:null, pod:null, resolver: mem().resolver || defaultResolver, linkedKey:null, name:'', storage:'', relays:[], candidate:null, verified:false, unconfReason:'', webidKeys:[] };
 
 /* --- NOSTR → SOLID : find a candidate WebID, then VERIFY it actually lists this pubkey --- */
 async function resolveStorage(pubkey){
@@ -211,6 +211,7 @@ async function resolveStorage(pubkey){
   state.candidate=candidate;
   // 3. VERIFY the backlink: fetch the WebID, check it actually lists this pubkey
   const v=await verifyWebId(candidate, pubkey);
+  state.webidKeys = v.keys||[];
   const bridged = v.ok || (fromResolver && !v.readable);  // trust resolver's alsoKnownAs if the WebID isn't reachable from here
   if(bridged){ state.webId=candidate; state.pod=podRoot(candidate); state.verified=true; renderNostr('storage'); }
   else { state.unconfReason = (location.protocol==='https:'&&/^http:\/\//i.test(candidate))?'mixed':(v.readable?'nokey':'unreachable'); renderNostr('unconfirmed'); }
@@ -220,10 +221,12 @@ async function resolveStorage(pubkey){
 async function verifyWebId(webId, pubkey){
   try{
     const r=await fetch(webId,{headers:{Accept:'text/turtle, application/ld+json;q=0.9, */*;q=0.8'}});
-    if(!r.ok) return {ok:false, readable:false, reason:String(r.status)};
+    if(!r.ok) return {ok:false, readable:false, keys:[], reason:String(r.status)};
     const t=(await r.text()).toLowerCase();
-    return {ok:t.includes(pubkey.toLowerCase()), readable:true};  // matches fe70102<hex>, did:nostr:<hex>, raw hex
-  }catch(e){ return {ok:false, readable:false, reason:e.message}; }
+    const keys=[...new Set([...t.matchAll(/(?:fe70102|did:nostr:)([0-9a-f]{64})/g)].map(m=>m[1]))];  // multibase + did:nostr forms
+    const pk=pubkey.toLowerCase();
+    return {ok: keys.includes(pk) || t.includes(pk), readable:true, keys};
+  }catch(e){ return {ok:false, readable:false, keys:[], reason:e.message}; }
 }
 function queryKind0(pubkey){
   return new Promise(resolve=>{
@@ -411,8 +414,15 @@ function renderNostr(stage, detail){
       nokey:'That WebID is reachable but doesn’t list this key yet — add your key to the pod’s profile to finish the bridge.',
       unreachable:'Couldn’t read that WebID (blocked by the browser/extension, offline, or not public).'
     };
+    const pk=(state.pubkey||'').toLowerCase();
+    const keysBlock = state.unconfReason==='nokey'
+      ? `<div class="result"><div class="k">your key</div><div class="v">${esc(pk)}</div></div>
+         <div class="result"><div class="k">this WebID lists ${state.webidKeys.length} nostr key${state.webidKeys.length===1?'':'s'}</div>`
+         + (state.webidKeys.length ? state.webidKeys.map(k=>`<div class="v">${esc(k)}${k===pk?' <span class="pill ok">← this is you</span>':''}</div>`).join('') : `<div class="v" style="color:var(--ink-3)">— none —</div>`)
+         + `</div>`
+      : '';
     b.innerHTML=head+`<div class="result warn"><span class="pill warn">unconfirmed</span> ${hints[state.unconfReason]||'Storage advertised, but not verified.'}</div>
-    <div class="result"><div class="k">advertised storage</div><div class="v"><a href="${esc(state.candidate)}" target="_blank">${esc(state.candidate)}</a></div></div>`+pubBtn()+fetchBtn()+resetBtn(); return; }
+    <div class="result"><div class="k">advertised storage</div><div class="v"><a href="${esc(state.candidate)}" target="_blank">${esc(state.candidate)}</a></div></div>`+keysBlock+pubBtn()+fetchBtn()+resetBtn(); return; }
 }
 renderNostr.idleInputs=()=>`<input type="text" id="nKeyInput" placeholder="hex pubkey (or npub)" /><button class="btn ghost sm" onclick="pasteNostr()">Resolve</button><div class="muted" id="nKeyMsg"></div>`;
 function resetBtn(){
