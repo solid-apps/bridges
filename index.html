@@ -162,6 +162,14 @@ function npubToHex(s){
   if(out.length!==32) return null;
   return out.map(b=>b.toString(16).padStart(2,'0')).join('');
 }
+function bech32ToHex(s){
+  s=s.trim().toLowerCase(); const p=s.lastIndexOf('1'); if(p<1) return null;
+  const prefix=s.slice(0,p); const words=[]; for(const c of s.slice(p+1)){ const v=B32.indexOf(c); if(v<0)return null; words.push(v); }
+  let acc=0,bits=0,out=[]; for(const w of words.slice(0,-6)){ acc=(acc<<5)|w; bits+=5; while(bits>=8){ bits-=8; out.push((acc>>bits)&0xff); } }
+  if(out.length!==32) return null;
+  return {prefix, hex: out.map(b=>b.toString(16).padStart(2,'0')).join('')};
+}
+function nsecToHex(s){ const d=bech32ToHex(s); return d&&d.prefix==='nsec'?d.hex:null; }
 function toPubkey(input){
   input=input.trim();
   if(/^[0-9a-f]{64}$/i.test(input)) return input.toLowerCase();
@@ -292,6 +300,22 @@ function downloadKey(pub,priv){
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([body],{type:'text/plain'})); a.download='nostr-key-backup.txt'; a.click();
 }
 
+/* --- sign in with an existing private key (64-hex or nsec) --- */
+async function importKey(){
+  const setMsg=t=>{ const e=$('nKeyMsg'); if(e) e.textContent=t; };
+  const raw=(($('nSkInput')||{}).value||'').trim();
+  let priv = /^[0-9a-f]{64}$/i.test(raw) ? raw.toLowerCase() : (raw.toLowerCase().startsWith('nsec') ? nsecToHex(raw) : null);
+  if(!priv){ setMsg('Enter a 64-hex private key or an nsec…'); return; }
+  if(mem().key && mem().key.priv && mem().key.priv!==priv && !confirm('Replace your current saved key with this one?')) return;
+  $('nostrBody').innerHTML='<div class="muted">Signing in…</div>';
+  let secp; try{ const M=await import('https://esm.sh/@noble/secp256k1@1.7.1'); secp=M.schnorr?M:(M.default||M); }
+  catch(e){ $('nostrBody').innerHTML='<div class="result err">Couldn’t load the crypto library: '+esc(e.message)+'</div>'+resetBtn(); return; }
+  let pub; try{ pub=secp.utils.bytesToHex(secp.schnorr.getPublicKey(priv)); }
+  catch(e){ renderNostr('idle'); setMsg('That doesn’t look like a valid private key.'); return; }
+  const m=mem(); m.key={pub, priv}; saveMem(m);   // self-custody signing key
+  resolveStorage(pub);
+}
+
 /* --- publish profile (kind 0) to relays --- */
 function canSign(){ return !!((mem().key&&mem().key.priv)||(window.nostr&&window.nostr.signEvent)); }
 function pubBtn(){ return canSign()?`<button class="btn nostr sm" onclick="publishProfile()" style="margin-top:8px">📡 Publish profile to relays</button><div class="muted" id="pubStatus"></div>`:''; }
@@ -391,11 +415,14 @@ async function findFromSolid(){
 function renderNostr(stage, detail){
   const b=$('nostrBody');
   if(stage==='idle'){ b.innerHTML=`
-    <button class="btn nostr" onclick="connectNostr()">⚡ Sign in with Nostr</button>
-    <div class="or">or paste a key</div>
-    <input type="text" id="nKeyInput" placeholder="hex pubkey (or npub)" />
-    <button class="btn ghost sm" onclick="pasteNostr()">Resolve</button>
+    <button class="btn nostr" onclick="connectNostr()">⚡ Sign in with extension</button>
+    <div class="or">or with a private key</div>
+    <input type="text" id="nSkInput" placeholder="private key — 64-hex or nsec…" />
+    <button class="btn ghost sm" onclick="importKey()">Sign in</button>
     <div class="muted" id="nKeyMsg"></div>
+    <div class="or">just look up a public key</div>
+    <input type="text" id="nKeyInput" placeholder="public key — hex or npub…" />
+    <button class="btn ghost sm" onclick="pasteNostr()">Resolve</button>
     <div class="or">no key yet?</div>
     <button class="btn ghost" onclick="generateKey()">✨ Generate a new key</button>`; return; }
   const pk=state.pubkey;
@@ -506,7 +533,7 @@ window.renderNostr=renderNostr; window.renderBridge=renderBridge; window.resolve
 window.renderSolid=renderSolid; window.copyCmd=copyCmd; window.forget=forget;
 window.generateKey=generateKey; window.copyText=copyText; window.downloadKey=downloadKey;
 window.forgetKey=forgetKey; window.nostrReset=nostrReset; window.state=state; window.mem=mem;
-window.publishProfile=publishProfile; window.fetchProfile=fetchProfile;
+window.publishProfile=publishProfile; window.fetchProfile=fetchProfile; window.importKey=importKey;
 $('resolverInput').value=state.resolver;
 $('resolverInput').onchange=e=>{ state.resolver=e.target.value.trim()||defaultResolver; const m=mem();m.resolver=state.resolver;saveMem(m); };
 state.relays=(mem().relays&&mem().relays.length)?mem().relays:defaultRelays;
