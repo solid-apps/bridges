@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sign in · Nostr → Solid</title>
+<meta name="theme-color" content="#7c4dff" />
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;
+    font-family:'Segoe UI',Roboto,system-ui,Arial,sans-serif;color:#11161c;
+    background:radial-gradient(120% 130% at 15% 10%,#9a6bff 0%,#7c4dff 38%,#2f6df6 100%);}
+  .card{background:#fff;border-radius:20px;box-shadow:0 12px 40px rgba(16,35,47,.25);
+    padding:34px 30px;width:100%;max-width:380px;text-align:center;}
+  .mark{width:54px;height:54px;border-radius:14px;margin:0 auto 14px;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(135deg,#8e5cff,#2f6df6);color:#fff;font-size:1.5rem;}
+  h1{font-size:1.5rem;font-weight:700;letter-spacing:-.4px;}
+  p.sub{color:#5b6675;margin:6px 0 22px;font-size:.95rem;}
+  .btn{width:100%;padding:13px 16px;border:none;border-radius:12px;font-family:inherit;font-weight:600;font-size:1rem;
+    cursor:pointer;color:#fff;background:#7c4dff;transition:.15s;display:flex;align-items:center;justify-content:center;gap:8px;}
+  .btn:hover{filter:brightness(1.07);} .btn:active{transform:translateY(1px);}
+  .btn.alt{background:#eef1f7;color:#11161c;margin-top:10px;font-weight:600;}
+  .or{display:flex;align-items:center;gap:8px;color:#9aa4b2;font-size:.78rem;margin:16px 0 10px;}
+  .or::before,.or::after{content:'';flex:1;height:1px;background:#e4e8ef;}
+  input{width:100%;padding:11px 12px;border:1px solid #e4e8ef;border-radius:10px;font-size:.92rem;outline:none;margin-bottom:8px;}
+  input:focus{border-color:#2f6df6;box-shadow:0 0 0 3px rgba(47,109,246,.12);}
+  .reveal{display:none;} .reveal.open{display:block;}
+  .status{margin-top:14px;font-size:.9rem;color:#5b6675;min-height:1.2em;}
+  .status.err{color:#e0392b;} .status.ok{color:#1aa86b;}
+  a{color:#2f6df6;text-decoration:none;} a:hover{text-decoration:underline;}
+  .foot{margin-top:18px;font-size:.8rem;color:#9aa4b2;}
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="mark">⚡</div>
+  <h1>Sign in</h1>
+  <p class="sub">Your Nostr key → your Solid pod.</p>
+
+  <div id="continueWrap"></div>
+  <button class="btn" id="extBtn">⚡ Sign in with Nostr</button>
+  <button class="btn alt" id="pasteToggle">Use a key instead</button>
+  <div class="reveal" id="pasteWrap" style="margin-top:12px">
+    <input type="text" id="keyInput" placeholder="npub / nsec / hex key…" />
+    <button class="btn" id="pasteBtn">Continue</button>
+  </div>
+
+  <div class="status" id="status"></div>
+  <div class="foot">No pod yet? <a id="bridgesLink" href="./">Set one up →</a></div>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+const P=new URLSearchParams(location.search);
+const isLocalPod = location.protocol.startsWith('http') && /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+const RESOLVER = (P.get('resolver') || (isLocalPod ? location.origin : 'https://nostr.social')).replace(/\/+$/,'');
+const NEXT = P.get('next') || '';
+const STORE='bridges.v0';
+const mem=()=>{ try{ return JSON.parse(localStorage.getItem(STORE))||{}; }catch{ return {}; } };
+function setStatus(t,cls){ const e=$('status'); e.innerHTML=t; e.className='status'+(cls?' '+cls:''); }
+
+/* bech32 (npub/nsec) decode */
+const B32='qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+function b32ToHex(s){ s=s.trim().toLowerCase(); const p=s.lastIndexOf('1'); if(p<1)return null;
+  const prefix=s.slice(0,p),w=[]; for(const c of s.slice(p+1)){const v=B32.indexOf(c); if(v<0)return null; w.push(v);}
+  let a=0,b=0,o=[]; for(const x of w.slice(0,-6)){a=(a<<5)|x;b+=5;while(b>=8){b-=8;o.push((a>>b)&0xff);}}
+  if(o.length!==32)return null; return {prefix,hex:o.map(x=>x.toString(16).padStart(2,'0')).join('')}; }
+
+async function privToPub(privHex){
+  const M=await import('https://esm.sh/@noble/secp256k1@1.7.1'); const secp=M.schnorr?M:(M.default||M);
+  return secp.utils.bytesToHex(secp.schnorr.getPublicKey(privHex));
+}
+async function toPubkey(input){
+  input=input.trim().replace(/^nostr:/i,'');
+  if(/^npub1/i.test(input)){ const d=b32ToHex(input); return d&&d.prefix==='npub'?d.hex:null; }
+  if(/^nsec1/i.test(input)){ const d=b32ToHex(input); return d&&d.prefix==='nsec'? await privToPub(d.hex):null; }
+  if(/^[0-9a-f]{64}$/i.test(input)) return input.toLowerCase(); // 64-hex assumed PUBLIC key
+  return null;
+}
+
+async function resolvePod(pubkey){
+  setStatus('Resolving did:nostr:'+pubkey.slice(0,8)+'… via '+RESOLVER);
+  let r; try{ r=await fetch(`${RESOLVER}/.well-known/did/nostr/${pubkey}.json`,{headers:{Accept:'application/json'}}); }
+  catch(e){ setStatus('Couldn’t reach the resolver: '+e.message,'err'); return; }
+  if(!r.ok){ setStatus('No account for this key at '+RESOLVER+'. <a href="./">Bridge a pod first →</a>','err'); return; }
+  let doc; try{ doc=await r.json(); }catch{ setStatus('Resolver returned invalid data','err'); return; }
+  const webId=[].concat(doc.alsoKnownAs||[]).filter(Boolean)[0];
+  if(!webId){ setStatus('Your key resolves, but no pod is linked yet. <a href="./">Add storage →</a>','err'); return; }
+  const dest = NEXT || webId;
+  setStatus('✓ Found your pod — taking you there…','ok');
+  setTimeout(()=>{ location.href=dest; }, 600);
+}
+
+async function go(pubkey){ if(pubkey) resolvePod(pubkey); }
+
+$('extBtn').onclick=async()=>{
+  if(!window.nostr){ setStatus('No Nostr extension found. Use a key, or install Podkey / nos2x / Alby.','err'); $('pasteWrap').classList.add('open'); return; }
+  let pk; try{ pk=(await window.nostr.getPublicKey()).toLowerCase(); }catch(e){ setStatus('Signer declined: '+e.message,'err'); return; }
+  go(pk);
+};
+$('pasteToggle').onclick=()=>$('pasteWrap').classList.toggle('open');
+$('pasteBtn').onclick=async()=>{
+  const pk=await toPubkey($('keyInput').value||'');
+  if(!pk){ setStatus('Not a valid npub / nsec / hex key','err'); return; }
+  go(pk);
+};
+$('keyInput').addEventListener('keydown',e=>{ if(e.key==='Enter') $('pasteBtn').click(); });
+
+/* one-click: reuse a key already saved by bridges */
+(function(){
+  const k=mem().key;
+  if(k&&k.pub){
+    const label=(mem().name)||k.pub.slice(0,10)+'…';
+    $('continueWrap').innerHTML=`<button class="btn" id="contBtn">Continue as ${label}</button><div class="or">or</div>`;
+    $('contBtn').onclick=()=>go(k.pub);
+  }
+})();
+// keep the "set up" link pointing at bridges with the same resolver/next
+$('bridgesLink').href='./'+location.search;
+</script>
+</body>
+</html>
