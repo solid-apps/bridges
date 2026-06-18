@@ -56,6 +56,7 @@ const P=new URLSearchParams(location.search);
 const isLocalPod = location.protocol.startsWith('http') && /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
 const RESOLVER = (P.get('resolver') || (isLocalPod ? location.origin : 'https://nostr.social')).replace(/\/+$/,'');
 const NEXT = P.get('next') || '';
+const APP = P.get('app') || '';   // a path under the resolved pod to land on, e.g. /public/apps/pigeon/
 const STORE='bridges.v0';
 const mem=()=>{ try{ return JSON.parse(localStorage.getItem(STORE))||{}; }catch{ return {}; } };
 function setStatus(t,cls){ const e=$('status'); e.innerHTML=t; e.className='status'+(cls?' '+cls:''); }
@@ -87,7 +88,9 @@ async function resolvePod(pubkey){
   let doc; try{ doc=await r.json(); }catch{ setStatus('Resolver returned invalid data','err'); return; }
   const webId=[].concat(doc.alsoKnownAs||[]).filter(Boolean)[0];
   if(!webId){ setStatus('Your key resolves, but no pod is linked yet. <a href="./">Add storage →</a>','err'); return; }
-  const dest = NEXT || webId;
+  let dest = NEXT;
+  if(!dest && APP){ try{ dest = new URL(webId).origin + APP; }catch{} }
+  if(!dest) dest = webId;
   setStatus('✓ Found your pod — taking you there…','ok');
   setTimeout(()=>{ location.href=dest; }, 250);
 }
