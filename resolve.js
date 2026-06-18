@@ -58,5 +58,24 @@
     } catch { return null; }
   }
 
-  window.Bridges = { keysInProfile, verifyWebId, resolvePodFromKey, podRoot, profileName };
+  // One-stop resolve via an aggregating resolver (nostr.social): ONE fetch returns
+  // profile (name/picture) + pod (alsoKnownAs) + follows. No relays, no per-follow kind-0.
+  // bridged = a real alsoKnownAs http WebID (resolver already backlink-checked it).
+  async function resolveDid(pubkey, opts) {
+    opts = opts || {};
+    const resolver = (opts.resolver || 'https://nostr.social').replace(/\/+$/, '');
+    let doc = null;
+    try {
+      const r = await fetch(resolver + '/.well-known/did/nostr/' + pubkey + '.json', { headers: { Accept: 'application/json' } });
+      if (r.ok) doc = await r.json();
+    } catch {}
+    if (!doc) return { pubkey, name: null, picture: null, about: null, website: null, pod: null, bridged: false, follows: [], doc: null };
+    const prof = doc.profile || {};
+    const aka = [].concat(doc.alsoKnownAs || []).filter(x => typeof x === 'string' && /^https?:\/\//i.test(x)); // real WebIDs only (skip "#me")
+    const pod = aka[0] || null;
+    const follows = (doc.follows || []).map(f => String(f).replace(/^did:nostr:/, '')).filter(x => /^[0-9a-f]{64}$/i.test(x));
+    return { pubkey, name: prof.name || null, picture: prof.picture || null, about: prof.about || null, website: prof.website || null, pod, bridged: !!pod, follows, doc };
+  }
+
+  window.Bridges = { keysInProfile, verifyWebId, resolvePodFromKey, podRoot, profileName, resolveDid };
 })();
