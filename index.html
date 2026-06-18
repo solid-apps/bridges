@@ -419,6 +419,10 @@ async function testLogin(){
   setLoginStatus(`HTTP <b>${authed.status}</b> · signed as <code>${esc((state.pubkey||'').slice(0,12))}…</code><br>anonymous perms: <code>${esc(a||'—')}</code><br>your perms: <code>${esc(b||'—')}</code> ${ok?'<span class="pill ok">logged in ✓</span>':'<span class="pill warn">no elevated access (check WAC-Allow / ACL)</span>'}`);
 }
 
+/* --- SSO: the magic redirect — key → resolver → WebID → land at your profile --- */
+function gotoBtn(){ const t=state.webId||state.candidate; return t?`<button class="btn solid" onclick="gotoProfile()" style="margin-top:8px;width:100%">Go to my profile →</button>`:''; }
+function gotoProfile(){ const t=state.webId||state.candidate; if(t) location.href=t; }
+
 /* --- SOLID → NOSTR : find linked key --- */
 async function findFromSolid(){
   const input=($('sInput').value||'').trim(); if(!input) return;
@@ -458,7 +462,7 @@ function renderNostr(stage, detail){
   if(stage==='noaccount'){ b.innerHTML=head+`<div class="result warn"><b>Identity valid</b>, but no account at this resolver. Try another resolver, or add storage.</div>`+pubBtn()+fetchBtn()+resetBtn(); return; }
   if(stage==='nostorage'){ b.innerHTML=head+`<div class="result warn"><span class="pill warn">no storage</span> Identity resolves, but no <code>alsoKnownAs</code> pod is linked.</div>`+pubBtn()+fetchBtn()+resetBtn(); return; }
   if(stage==='storage'){ b.innerHTML=head+`<div class="result ok"><span class="pill ok">bridged</span> the WebID lists this key.</div>
-    <div class="result"><div class="k">storage (webid)</div><div class="v"><a href="${esc(state.webId||state.pod)}" target="_blank">${esc(state.webId||state.pod)}</a></div></div>`+pubBtn()+fetchBtn()+loginBtn()+resetBtn(); return; }
+    <div class="result"><div class="k">storage (webid)</div><div class="v"><a href="${esc(state.webId||state.pod)}" target="_blank">${esc(state.webId||state.pod)}</a></div></div>`+gotoBtn()+pubBtn()+fetchBtn()+loginBtn()+resetBtn(); return; }
   if(stage==='unconfirmed'){
     const hints={
       mixed:'This page is <b>https</b> but your storage is <b>http&#8203;://localhost</b> — browsers block that cross-origin. Open bridges from your pod (<code>http://localhost:5444/public/apps/bridges/</code>) to verify.',
@@ -473,7 +477,7 @@ function renderNostr(stage, detail){
          + `</div>`
       : '';
     b.innerHTML=head+`<div class="result warn"><span class="pill warn">unconfirmed</span> ${hints[state.unconfReason]||'Storage advertised, but not verified.'}</div>
-    <div class="result"><div class="k">advertised storage</div><div class="v"><a href="${esc(state.candidate)}" target="_blank">${esc(state.candidate)}</a></div></div>`+keysBlock+pubBtn()+fetchBtn()+resetBtn(); return; }
+    <div class="result"><div class="k">advertised storage</div><div class="v"><a href="${esc(state.candidate)}" target="_blank">${esc(state.candidate)}</a></div></div>`+keysBlock+gotoBtn()+pubBtn()+fetchBtn()+resetBtn(); return; }
 }
 renderNostr.idleInputs=()=>`<input type="text" id="nKeyInput" placeholder="hex pubkey (or npub)" /><button class="btn ghost sm" onclick="pasteNostr()">Resolve</button><div class="muted" id="nKeyMsg"></div>`;
 function resetBtn(){
@@ -557,7 +561,7 @@ window.renderNostr=renderNostr; window.renderBridge=renderBridge; window.resolve
 window.renderSolid=renderSolid; window.copyCmd=copyCmd; window.forget=forget;
 window.generateKey=generateKey; window.copyText=copyText; window.downloadKey=downloadKey;
 window.forgetKey=forgetKey; window.nostrReset=nostrReset; window.state=state; window.mem=mem;
-window.publishProfile=publishProfile; window.fetchProfile=fetchProfile; window.importKey=importKey; window.testLogin=testLogin;
+window.publishProfile=publishProfile; window.fetchProfile=fetchProfile; window.importKey=importKey; window.testLogin=testLogin; window.gotoProfile=gotoProfile;
 $('resolverInput').value=state.resolver;
 $('resolverInput').onchange=e=>{ state.resolver=e.target.value.trim()||defaultResolver; const m=mem();m.resolver=state.resolver;saveMem(m); };
 state.relays=(mem().relays&&mem().relays.length)?mem().relays:defaultRelays;
