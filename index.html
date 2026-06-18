@@ -226,12 +226,13 @@ async function resolveStorage(pubkey){
   renderBridge(); coach();
   remember({pubkey, webId:state.verified?candidate:null, pod:state.verified?state.pod:null, name:state.name||null, ts:Date.now()});
 }
+function keysInProfile(text){ return [...new Set([...String(text).toLowerCase().matchAll(/(?:fe70102|did:nostr:)([0-9a-f]{64})/g)].map(m=>m[1]))]; }  // fe70102 multibase + did:nostr forms
 async function verifyWebId(webId, pubkey){
   try{
     const r=await fetch(webId,{headers:{Accept:'text/turtle, application/ld+json;q=0.9, */*;q=0.8'}});
     if(!r.ok) return {ok:false, readable:false, keys:[], reason:String(r.status)};
     const t=(await r.text()).toLowerCase();
-    const keys=[...new Set([...t.matchAll(/(?:fe70102|did:nostr:)([0-9a-f]{64})/g)].map(m=>m[1]))];  // multibase + did:nostr forms
+    const keys=keysInProfile(t);
     const pk=pubkey.toLowerCase();
     return {ok: keys.includes(pk) || t.includes(pk), readable:true, keys};
   }catch(e){ return {ok:false, readable:false, keys:[], reason:e.message}; }
@@ -397,6 +398,27 @@ function renderFetched(ev){
     (stor?`<div style="margin-top:2px">📦 storage: <a href="${esc(stor)}" target="_blank" rel="noopener">${esc(stor)}</a></div>`:''));
 }
 
+/* --- test pod login: a NIP-98 signed request, proving the pod recognizes your key --- */
+function loginBtn(){ return (canSign()&&state.pod)?`<button class="btn solid sm" onclick="testLogin()" style="margin-top:8px">🔓 Test pod login (NIP-98)</button><div class="muted" id="loginStatus"></div>`:''; }
+function setLoginStatus(t){ const e=$('loginStatus'); if(e) e.innerHTML=t; }
+function wacUser(h){ const m=/user="([^"]*)"/i.exec(h||''); return m?m[1].trim():''; }
+async function nip98Header(url, method){
+  let evt={kind:27235, created_at:Math.floor(Date.now()/1000), tags:[['u',url],['method',method]], content:'', pubkey:state.pubkey};
+  evt=await signEvent(evt);  // local schnorr or window.nostr
+  return 'Nostr '+btoa(unescape(encodeURIComponent(JSON.stringify(evt))));
+}
+async function testLogin(){
+  const target = state.pod || podRoot(state.webId) || (location.origin+'/');
+  setLoginStatus('Signing a request to <code>'+esc(target)+'</code>…');
+  let anon, authed, header;
+  try{ anon=await fetch(target,{method:'GET'}); }catch(e){ setLoginStatus('<span style="color:var(--err)">Couldn’t reach the pod ('+esc(e.message)+') — run from the pod-served copy if it’s on http://localhost.</span>'); return; }
+  try{ header=await nip98Header(target,'GET'); }catch(e){ setLoginStatus('<span style="color:var(--err)">Sign failed: '+esc(e.message)+'</span>'); return; }
+  try{ authed=await fetch(target,{method:'GET',headers:{Authorization:header}}); }catch(e){ setLoginStatus('<span style="color:var(--err)">Request failed: '+esc(e.message)+'</span>'); return; }
+  const a=wacUser(anon.headers.get('WAC-Allow')), b=wacUser(authed.headers.get('WAC-Allow'));
+  const ok = b && b!==a;
+  setLoginStatus(`HTTP <b>${authed.status}</b> · signed as <code>${esc((state.pubkey||'').slice(0,12))}…</code><br>anonymous perms: <code>${esc(a||'—')}</code><br>your perms: <code>${esc(b||'—')}</code> ${ok?'<span class="pill ok">logged in ✓</span>':'<span class="pill warn">no elevated access (check WAC-Allow / ACL)</span>'}`);
+}
+
 /* --- SOLID → NOSTR : find linked key --- */
 async function findFromSolid(){
   const input=($('sInput').value||'').trim(); if(!input) return;
@@ -405,10 +427,10 @@ async function findFromSolid(){
   let text;
   try{ const r=await fetch(url,{headers:{Accept:'text/turtle, application/ld+json;q=0.9, */*;q=0.8'}}); if(!r.ok){ renderSolid('error',`${r.status} fetching profile`); return; } text=await r.text(); }
   catch(e){ renderSolid('error',e.message); return; }
-  // best-effort: look for a did:nostr or a bare 64-hex pubkey / npub in the profile
-  const did=text.match(/did:nostr:([0-9a-f]{64})/i);
+  // find a nostr key in the profile: fe70102 multibase VM, did:nostr, or npub
+  const keys=keysInProfile(text);
   const np=text.match(/\bnpub1[0-9a-z]{20,}\b/i);
-  const hex=did?did[1].toLowerCase():(np?npubToHex(np[0]):null);
+  const hex = keys[0] || (np?npubToHex(np[0]):null);
   if(hex){ state.linkedKey=hex; renderSolid('found', url); coach(); if(!state.pubkey) resolveStorage(hex); }
   else { renderSolid('notlinked', url); coach(); }
 }
@@ -436,7 +458,7 @@ function renderNostr(stage, detail){
   if(stage==='noaccount'){ b.innerHTML=head+`<div class="result warn"><b>Identity valid</b>, but no account at this resolver. Try another resolver, or add storage.</div>`+pubBtn()+fetchBtn()+resetBtn(); return; }
   if(stage==='nostorage'){ b.innerHTML=head+`<div class="result warn"><span class="pill warn">no storage</span> Identity resolves, but no <code>alsoKnownAs</code> pod is linked.</div>`+pubBtn()+fetchBtn()+resetBtn(); return; }
   if(stage==='storage'){ b.innerHTML=head+`<div class="result ok"><span class="pill ok">bridged</span> the WebID lists this key.</div>
-    <div class="result"><div class="k">storage (webid)</div><div class="v"><a href="${esc(state.webId||state.pod)}" target="_blank">${esc(state.webId||state.pod)}</a></div></div>`+pubBtn()+fetchBtn()+resetBtn(); return; }
+    <div class="result"><div class="k">storage (webid)</div><div class="v"><a href="${esc(state.webId||state.pod)}" target="_blank">${esc(state.webId||state.pod)}</a></div></div>`+pubBtn()+fetchBtn()+loginBtn()+resetBtn(); return; }
   if(stage==='unconfirmed'){
     const hints={
       mixed:'This page is <b>https</b> but your storage is <b>http&#8203;://localhost</b> — browsers block that cross-origin. Open bridges from your pod (<code>http://localhost:5444/public/apps/bridges/</code>) to verify.',
@@ -535,7 +557,7 @@ window.renderNostr=renderNostr; window.renderBridge=renderBridge; window.resolve
 window.renderSolid=renderSolid; window.copyCmd=copyCmd; window.forget=forget;
 window.generateKey=generateKey; window.copyText=copyText; window.downloadKey=downloadKey;
 window.forgetKey=forgetKey; window.nostrReset=nostrReset; window.state=state; window.mem=mem;
-window.publishProfile=publishProfile; window.fetchProfile=fetchProfile; window.importKey=importKey;
+window.publishProfile=publishProfile; window.fetchProfile=fetchProfile; window.importKey=importKey; window.testLogin=testLogin;
 $('resolverInput').value=state.resolver;
 $('resolverInput').onchange=e=>{ state.resolver=e.target.value.trim()||defaultResolver; const m=mem();m.resolver=state.resolver;saveMem(m); };
 state.relays=(mem().relays&&mem().relays.length)?mem().relays:defaultRelays;
