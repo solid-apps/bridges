@@ -141,6 +141,7 @@
     <label>resolver <input type="text" id="resolverInput" /></label>
     <label>relays <input type="text" id="relaysInput" style="width:240px" /></label>
     <span>bridges v0.0.1</span><span>·</span>
+    <a href="login.html" id="loginLink">simple sign-in →</a><span>·</span>
     <a href="https://github.com/solid-apps" target="_blank">solid-apps</a>
   </footer>
 </main>
@@ -580,6 +581,7 @@ if(qsStorage){ const m=mem(); m.storage=state.storage; saveMem(m); }
 $('storageInput').value=state.storage;
 $('storageInput').oninput=e=>{ state.storage=e.target.value.trim(); const m=mem(); m.storage=state.storage; saveMem(m); };
 state.solidInput=(new URLSearchParams(location.search).get('webid')||mem().solidInput||'').trim();
+$('loginLink').href='login.html'+location.search;
 /* reuse the saved key if there is one (one bespoke key, kept until "forget") */
 if(mem().key && mem().key.pub){ state.pubkey=mem().key.pub; resolveStorage(state.pubkey); } else { renderNostr('idle'); }
 renderSolid('idle'); renderBridge(); coach(); renderRecent();
