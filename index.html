@@ -199,7 +199,7 @@ const STATIC_HOSTS = /(?:^|\.)(?:github\.io|pages\.dev|netlify\.app|vercel\.app)
 const servedFromPod = location.protocol.startsWith('http') && !STATIC_HOSTS.test(location.hostname);
 // served from a pod → use that origin; on static hosts (github.io) fall back to a sensible default
 const defaultStorage = (servedFromPod ? location.origin : 'http://localhost:5444') + '/profile/card.jsonld#me';
-const state={ pubkey:null, doc:null, webId:null, pod:null, resolver: mem().resolver || defaultResolver, linkedKey:null, name:'', storage:'', relays:[], candidate:null, verified:false, unconfReason:'', webidKeys:[] };
+const state={ pubkey:null, doc:null, webId:null, pod:null, resolver: mem().resolver || defaultResolver, linkedKey:null, name:'', storage:'', relays:[], candidate:null, verified:false, unconfReason:'', webidKeys:[], solidInput:'' };
 
 /* --- NOSTR → SOLID : find a candidate WebID, then VERIFY it actually lists this pubkey --- */
 async function resolveStorage(pubkey){
@@ -438,6 +438,7 @@ async function findFromSolid(){
   if(hex){ state.linkedKey=hex; renderSolid('found', url); coach(); if(!state.pubkey) resolveStorage(hex); }
   else { renderSolid('notlinked', url); coach(); }
 }
+function rememberSolidInput(v){ state.solidInput=(v||'').trim(); const m=mem(); m.solidInput=state.solidInput; saveMem(m); }
 
 /* --- renderers --- */
 function renderNostr(stage, detail){
@@ -497,7 +498,7 @@ function forgetKey(){
 function renderSolid(stage, url){
   const b=$('solidBody');
   if(stage==='idle'){ b.innerHTML=`
-    <input type="text" id="sInput" placeholder="your WebID or pod URL" />
+    <input type="text" id="sInput" placeholder="your WebID or pod URL" value="${esc(state.solidInput||state.storage||defaultStorage||'')}" oninput="rememberSolidInput(this.value)" onkeydown="if(event.key==='Enter')findFromSolid()" />
     <button class="btn solid sm" onclick="findFromSolid()">Find linked Nostr key</button>
     <div class="muted">Have a pod but no key linked? This finds it from the other side.</div>
     <div class="or">no pod yet?</div>
@@ -561,7 +562,7 @@ window.renderNostr=renderNostr; window.renderBridge=renderBridge; window.resolve
 window.renderSolid=renderSolid; window.copyCmd=copyCmd; window.forget=forget;
 window.generateKey=generateKey; window.copyText=copyText; window.downloadKey=downloadKey;
 window.forgetKey=forgetKey; window.nostrReset=nostrReset; window.state=state; window.mem=mem;
-window.publishProfile=publishProfile; window.fetchProfile=fetchProfile; window.importKey=importKey; window.testLogin=testLogin; window.gotoProfile=gotoProfile;
+window.publishProfile=publishProfile; window.fetchProfile=fetchProfile; window.importKey=importKey; window.testLogin=testLogin; window.gotoProfile=gotoProfile; window.rememberSolidInput=rememberSolidInput;
 $('resolverInput').value=state.resolver;
 $('resolverInput').onchange=e=>{ state.resolver=e.target.value.trim()||defaultResolver; const m=mem();m.resolver=state.resolver;saveMem(m); };
 state.relays=(mem().relays&&mem().relays.length)?mem().relays:defaultRelays;
@@ -578,6 +579,7 @@ state.storage=(qsStorage||mem().storage||defaultStorage||'').trim();
 if(qsStorage){ const m=mem(); m.storage=state.storage; saveMem(m); }
 $('storageInput').value=state.storage;
 $('storageInput').oninput=e=>{ state.storage=e.target.value.trim(); const m=mem(); m.storage=state.storage; saveMem(m); };
+state.solidInput=(new URLSearchParams(location.search).get('webid')||mem().solidInput||'').trim();
 /* reuse the saved key if there is one (one bespoke key, kept until "forget") */
 if(mem().key && mem().key.pub){ state.pubkey=mem().key.pub; resolveStorage(state.pubkey); } else { renderNostr('idle'); }
 renderSolid('idle'); renderBridge(); coach(); renderRecent();
