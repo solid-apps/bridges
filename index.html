@@ -240,18 +240,18 @@ async function verifyWebId(webId, pubkey){
 function queryKind0(pubkey){
   return new Promise(resolve=>{
     const relays=(state.relays&&state.relays.length)?state.relays:defaultRelays;
-    let best=null, done=0, fin=false;
-    const out=()=>{ if(fin)return; fin=true; let p=null; try{ p=best?JSON.parse(best.content):null; }catch{} resolve(p); };
-    setTimeout(out, 6500);
+    let best=null, done=0, fin=false, grace=null;
+    const out=()=>{ if(fin)return; fin=true; clearTimeout(grace); let p=null; try{ p=best?JSON.parse(best.content):null; }catch{} resolve(p); };
+    setTimeout(out, 2500);  // hard cap
     const subid='r'+Math.random().toString(36).slice(2,8);
     relays.forEach(url=>{
       let ws, settled=false;
       const one=()=>{ if(settled)return; settled=true; done++; if(done>=relays.length) out(); };
-      const t=setTimeout(()=>{ try{ws&&ws.close();}catch{} one(); },6000);
+      const t=setTimeout(()=>{ try{ws&&ws.close();}catch{} one(); },3000);
       try{ ws=new WebSocket(url); }catch{ one(); return; }
       ws.onopen=()=>{ try{ ws.send(JSON.stringify(['REQ',subid,{authors:[pubkey],kinds:[0],limit:1}])); }catch{ one(); } };
       ws.onmessage=m=>{ try{ const d=JSON.parse(m.data);
-        if(d[0]==='EVENT'&&d[1]===subid){ const ev=d[2]; if(ev&&(!best||ev.created_at>best.created_at)) best=ev; }
+        if(d[0]==='EVENT'&&d[1]===subid){ const ev=d[2]; if(ev&&(!best||ev.created_at>best.created_at)) best=ev; if(!grace) grace=setTimeout(out,400); }  // got an answer → resolve soon; don't wait on dead relays
         else if(d[0]==='EOSE'&&d[1]===subid){ try{ws.send(JSON.stringify(['CLOSE',subid]));}catch{} try{ws.close();}catch{} clearTimeout(t); one(); }
       }catch{} };
       ws.onerror=()=>{ clearTimeout(t); try{ws.close();}catch{} one(); };

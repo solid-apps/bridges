@@ -89,7 +89,7 @@ async function resolvePod(pubkey){
   if(!webId){ setStatus('Your key resolves, but no pod is linked yet. <a href="./">Add storage →</a>','err'); return; }
   const dest = NEXT || webId;
   setStatus('✓ Found your pod — taking you there…','ok');
-  setTimeout(()=>{ location.href=dest; }, 600);
+  setTimeout(()=>{ location.href=dest; }, 250);
 }
 
 async function go(pubkey){ if(pubkey) resolvePod(pubkey); }
